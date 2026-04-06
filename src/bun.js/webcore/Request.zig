@@ -695,12 +695,27 @@ pub fn constructInto(globalThis: *jsc.JSGlobalObject, arguments: []const jsc.JSV
                 }
 
                 if (!fields.contains(.body)) {
-                    switch (request.#body.value) {
-                        .Null, .Empty, .Used => {},
-                        else => {
-                            req.#body.value = try request.#body.value.clone(globalThis);
-                            fields.insert(.body);
-                        },
+                    // If the source Request's readable stream was moved into
+                    // `js.gc.stream` by `checkBodyStreamRef`, clone through it
+                    // so we tee the live stream rather than the (now empty)
+                    // `Locked.readable` slot. Mirrors the logic in `cloneInto`.
+                    const cloned_body: ?Body.Value = brk: {
+                        if (request.#js_ref.tryGet()) |js_ref| {
+                            if (js.gc.stream.get(js_ref)) |stream_value| {
+                                if (try jsc.WebCore.ReadableStream.fromJS(stream_value, globalThis)) |stream| {
+                                    var readable = stream;
+                                    break :brk try request.#body.value.cloneWithReadableStream(globalThis, &readable);
+                                }
+                            }
+                        }
+                        switch (request.#body.value) {
+                            .Null, .Empty, .Used => break :brk null,
+                            else => break :brk try request.#body.value.clone(globalThis),
+                        }
+                    };
+                    if (cloned_body) |b| {
+                        req.#body.value = b;
+                        fields.insert(.body);
                     }
                 }
             }
@@ -743,8 +758,15 @@ pub fn constructInto(globalThis: *jsc.JSGlobalObject, arguments: []const jsc.JSV
 
         if (!fields.contains(.body)) {
             if (try value.fastGet(globalThis, .body)) |body_| {
-                fields.insert(.body);
-                req.#body.value = try Body.Value.fromJS(globalThis, body_);
+                // Per the Fetch spec the init body only "exists" when it is
+                // non-null, so a literal `null` falls back to the inherited
+                // body rather than clearing it. `fastGet` already returns
+                // `null` for both missing properties and `undefined`, so
+                // here we only need to skip an explicit `null`.
+                if (!body_.isNull()) {
+                    fields.insert(.body);
+                    req.#body.value = try Body.Value.fromJS(globalThis, body_);
+                }
             }
 
             if (globalThis.hasException()) return error.JSError;
