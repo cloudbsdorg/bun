@@ -429,6 +429,7 @@ class Database implements SqliteTypes.Database {
   #cachedQueriesKeys: string[] = [];
   #cachedQueriesLengths: number[] = [];
   #cachedQueriesValues: Statement[] = [];
+  #cachedQueriesBytes = 0;
   filename;
   #hasClosed = false;
   get handle() {
@@ -526,6 +527,7 @@ class Database implements SqliteTypes.Database {
     this.#cachedQueriesKeys.length = 0;
     this.#cachedQueriesValues.length = 0;
     this.#cachedQueriesLengths.length = 0;
+    this.#cachedQueriesBytes = 0;
   }
 
   run(query, ...params) {
@@ -549,6 +551,13 @@ class Database implements SqliteTypes.Database {
   }
 
   static MAX_QUERY_CACHE_SIZE = 20;
+  // Total SQL text (in code units) the query cache is allowed to pin.
+  // Prevents a small number of very large dynamic queries from pinning
+  // arbitrarily large amounts of memory (see #28911).
+  static MAX_QUERY_CACHE_BYTES = 2 * 1024 * 1024;
+  // A single query whose SQL is larger than this is never cached — the
+  // reuse value is marginal and the per-entry cost can be many MB.
+  static MAX_QUERY_CACHE_ENTRY_BYTES = 64 * 1024;
 
   get [cachedCount]() {
     return this.#cachedQueriesKeys.length;
@@ -563,8 +572,6 @@ class Database implements SqliteTypes.Database {
       throw new Error("SQL query cannot be empty.");
     }
 
-    const willCache = this.#cachedQueriesKeys.length < Database.MAX_QUERY_CACHE_SIZE;
-
     // this list should be pretty small
     let index = this.#cachedQueriesLengths.indexOf(query.length);
     while (index !== -1) {
@@ -575,21 +582,39 @@ class Database implements SqliteTypes.Database {
 
       const stmt = this.#cachedQueriesValues[index];
       if (stmt.isFinalized) {
-        return (this.#cachedQueriesValues[index] = this.prepare(
-          query,
-          undefined,
-          willCache ? constants.SQLITE_PREPARE_PERSISTENT : 0,
-        ));
+        return (this.#cachedQueriesValues[index] = this.prepare(query, undefined, constants.SQLITE_PREPARE_PERSISTENT));
       }
       return stmt;
     }
 
+    const countLimit = Database.MAX_QUERY_CACHE_SIZE;
+    const byteLimit = Database.MAX_QUERY_CACHE_BYTES;
+    const entryBytes = query.length;
+    const willCache = countLimit > 0 && entryBytes <= Database.MAX_QUERY_CACHE_ENTRY_BYTES && entryBytes <= byteLimit;
+
     var stmt = this.prepare(query, undefined, willCache ? constants.SQLITE_PREPARE_PERSISTENT : 0);
 
     if (willCache) {
+      // Evict FIFO until the new entry fits under both the count cap and
+      // the byte cap. Evicted statements are finalized immediately so
+      // their memory is released without waiting on GC.
+      while (
+        this.#cachedQueriesKeys.length > 0 &&
+        (this.#cachedQueriesKeys.length >= countLimit || this.#cachedQueriesBytes + entryBytes > byteLimit)
+      ) {
+        const evictedLength = this.#cachedQueriesLengths.shift() ?? 0;
+        this.#cachedQueriesKeys.shift();
+        const evicted = this.#cachedQueriesValues.shift();
+        this.#cachedQueriesBytes -= evictedLength;
+        if (evicted && !evicted.isFinalized) {
+          evicted.finalize?.();
+        }
+      }
+
       this.#cachedQueriesKeys.push(query);
-      this.#cachedQueriesLengths.push(query.length);
+      this.#cachedQueriesLengths.push(entryBytes);
       this.#cachedQueriesValues.push(stmt);
+      this.#cachedQueriesBytes += entryBytes;
     }
 
     return stmt;
