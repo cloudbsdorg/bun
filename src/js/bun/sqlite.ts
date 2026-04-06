@@ -426,10 +426,24 @@ class Database implements SqliteTypes.Database {
 
   #internalFlags = 0;
   #handle;
-  #cachedQueriesKeys: string[] = [];
-  #cachedQueriesLengths: number[] = [];
-  #cachedQueriesValues: Statement[] = [];
+  // Insertion-ordered cache of prepared statements, keyed by full SQL text.
+  // Map iteration order is insertion order, so the first key returned from
+  // keys() is always the oldest entry — which lets the eviction loop run
+  // in O(1) per removal instead of O(n) with array shift().
+  #cachedQueries: Map<string, Statement> = new Map();
   #cachedQueriesBytes = 0;
+  // Weakly-tracked statements returned from db.query() that did NOT enter
+  // the cache (because the SQL was too large, or caching was disabled).
+  // Needed so that close()/clearQueryCache() can finalize any still-alive
+  // transient statements before calling sqlite3_close() — otherwise
+  // `using db = new Database(...)` followed by `db.query(hugeSql).all()`
+  // would trip SQLITE_BUSY on scope exit. Entries are removed
+  // automatically when GC collects the Statement, so this set does not
+  // pin memory beyond what the caller is already holding.
+  #uncachedQueries: Set<WeakRef<Statement>> = new Set();
+  #uncachedQueryFinalizer: FinalizationRegistry<WeakRef<Statement>> = new FinalizationRegistry(ref => {
+    this.#uncachedQueries.delete(ref);
+  });
   filename;
   #hasClosed = false;
   get handle() {
@@ -521,13 +535,21 @@ class Database implements SqliteTypes.Database {
     return SQL.close(this.#handle, throwOnError);
   }
   clearQueryCache() {
-    for (let item of this.#cachedQueriesValues) {
-      item?.finalize?.();
+    for (const stmt of this.#cachedQueries.values()) {
+      stmt?.finalize?.();
     }
-    this.#cachedQueriesKeys.length = 0;
-    this.#cachedQueriesValues.length = 0;
-    this.#cachedQueriesLengths.length = 0;
+    this.#cachedQueries.clear();
     this.#cachedQueriesBytes = 0;
+
+    // Also finalize any transient db.query() statements the caller has
+    // not already finalized. Before the byte-size caps were added, every
+    // db.query() result was kept alive by the cache and cleaned up here;
+    // with the caps, large SQL texts go through the uncached path and
+    // would otherwise be left dangling when the DB tries to close.
+    for (const ref of this.#uncachedQueries) {
+      ref.deref()?.finalize?.();
+    }
+    this.#uncachedQueries.clear();
   }
 
   run(query, ...params) {
@@ -551,16 +573,21 @@ class Database implements SqliteTypes.Database {
   }
 
   static MAX_QUERY_CACHE_SIZE = 20;
-  // Total SQL text (in code units) the query cache is allowed to pin.
+  // Total cached SQL text size the query cache is allowed to pin. Measured
+  // in UTF-16 code units (String#length), which equals UTF-8 byte count for
+  // ASCII SQL — the common case. Non-ASCII SQL (CJK identifiers, localized
+  // string literals) can use up to 3 UTF-8 bytes per code unit, so the
+  // actual pinned memory may be up to 3× this value for such workloads.
   // Prevents a small number of very large dynamic queries from pinning
   // arbitrarily large amounts of memory (see #28911).
   static MAX_QUERY_CACHE_BYTES = 2 * 1024 * 1024;
-  // A single query whose SQL is larger than this is never cached — the
+  // A single query whose SQL text exceeds this (measured in UTF-16 code
+  // units; see MAX_QUERY_CACHE_BYTES note above) is never cached — the
   // reuse value is marginal and the per-entry cost can be many MB.
   static MAX_QUERY_CACHE_ENTRY_BYTES = 64 * 1024;
 
   get [cachedCount]() {
-    return this.#cachedQueriesKeys.length;
+    return this.#cachedQueries.size;
   }
 
   query(query) {
@@ -572,49 +599,82 @@ class Database implements SqliteTypes.Database {
       throw new Error("SQL query cannot be empty.");
     }
 
-    // this list should be pretty small
-    let index = this.#cachedQueriesLengths.indexOf(query.length);
-    while (index !== -1) {
-      if (this.#cachedQueriesKeys[index] !== query) {
-        index = this.#cachedQueriesLengths.indexOf(query.length, index + 1);
-        continue;
-      }
-
-      const stmt = this.#cachedQueriesValues[index];
-      if (stmt.isFinalized) {
-        return (this.#cachedQueriesValues[index] = this.prepare(query, undefined, constants.SQLITE_PREPARE_PERSISTENT));
-      }
-      return stmt;
-    }
-
+    // Compute cache eligibility up front so both the hit path (replacing
+    // a finalized entry) and the miss path honor the current limits —
+    // and so a user who sets MAX_QUERY_CACHE_SIZE = 0 at runtime to
+    // disable caching is respected even when an already-cached entry
+    // gets externally finalized.
     const countLimit = Database.MAX_QUERY_CACHE_SIZE;
     const byteLimit = Database.MAX_QUERY_CACHE_BYTES;
-    const entryBytes = query.length;
-    const willCache = countLimit > 0 && entryBytes <= Database.MAX_QUERY_CACHE_ENTRY_BYTES && entryBytes <= byteLimit;
+    const entryLength = query.length;
+    const willCache = countLimit > 0 && entryLength <= Database.MAX_QUERY_CACHE_ENTRY_BYTES && entryLength <= byteLimit;
 
-    var stmt = this.prepare(query, undefined, willCache ? constants.SQLITE_PREPARE_PERSISTENT : 0);
+    const cache = this.#cachedQueries;
+    const cached = cache.get(query);
+    if (cached !== undefined) {
+      if (!cached.isFinalized) return cached;
+
+      if (willCache) {
+        // Replace the finalized entry with a fresh prepared statement.
+        // Use delete+set so the refreshed entry is moved to the NEWEST
+        // slot in insertion order — if we just did cache.set(), the Map
+        // would keep it at its old (possibly oldest) slot and the very
+        // next distinct query() call could evict it immediately.
+        const replacement = this.prepare(query, undefined, constants.SQLITE_PREPARE_PERSISTENT);
+        cache.delete(query);
+        cache.set(query, replacement);
+        return replacement;
+      }
+
+      // Caching was disabled (or the per-entry cap was tightened) after
+      // this entry was first admitted. Drop it and fall through to the
+      // uncached prepare below.
+      cache.delete(query);
+      this.#cachedQueriesBytes -= entryLength;
+    }
+
+    const stmt = this.prepare(query, undefined, willCache ? constants.SQLITE_PREPARE_PERSISTENT : 0);
 
     if (willCache) {
       // Evict FIFO until the new entry fits under both the count cap and
-      // the byte cap. Evicted statements are finalized immediately so
-      // their memory is released without waiting on GC.
-      while (
-        this.#cachedQueriesKeys.length > 0 &&
-        (this.#cachedQueriesKeys.length >= countLimit || this.#cachedQueriesBytes + entryBytes > byteLimit)
-      ) {
-        const evictedLength = this.#cachedQueriesLengths.shift() ?? 0;
-        this.#cachedQueriesKeys.shift();
-        const evicted = this.#cachedQueriesValues.shift();
-        this.#cachedQueriesBytes -= evictedLength;
-        if (evicted && !evicted.isFinalized) {
-          evicted.finalize?.();
-        }
+      // the byte cap. We only drop the cache's reference to the evicted
+      // Statement — we do NOT call finalize() on it. A caller may still
+      // be holding a reference from a prior db.query() call (a common
+      // pattern for repeated parameterized queries) and finalizing out
+      // from under them would silently destroy their handle. GC will
+      // collect the statement — and run sqlite3_finalize via the C++
+      // destructor — once no JS references remain.
+      //
+      // Map iteration is insertion-ordered, so keys().next().value is
+      // always the oldest entry — O(1) lookup and O(1) delete.
+      while (cache.size > 0 && (cache.size >= countLimit || this.#cachedQueriesBytes + entryLength > byteLimit)) {
+        const oldestKey = cache.keys().next().value!;
+        const oldestStmt = cache.get(oldestKey)!;
+        cache.delete(oldestKey);
+        this.#cachedQueriesBytes -= oldestKey.length;
+        // The evicted Statement may still be referenced from user code,
+        // so we don't finalize it here. But we're also dropping the
+        // cache's only strong reference to it, which means close() would
+        // no longer finalize it either — and sqlite3_close() would then
+        // trip SQLITE_BUSY on any native sqlite3_stmt handle still
+        // attached to the db. Move the evicted entry into the weak
+        // transient set so clearQueryCache() can finalize any survivors.
+        const ref = new WeakRef(oldestStmt);
+        this.#uncachedQueries.add(ref);
+        this.#uncachedQueryFinalizer.register(oldestStmt, ref);
       }
 
-      this.#cachedQueriesKeys.push(query);
-      this.#cachedQueriesLengths.push(entryBytes);
-      this.#cachedQueriesValues.push(stmt);
-      this.#cachedQueriesBytes += entryBytes;
+      cache.set(query, stmt);
+      this.#cachedQueriesBytes += entryLength;
+    } else {
+      // Track transient (uncached) statements weakly so that close() /
+      // clearQueryCache() can finalize any that are still alive when the
+      // database shuts down. The FinalizationRegistry removes entries
+      // once GC collects them, so the set does not grow beyond the
+      // number of currently-live transient statements.
+      const ref = new WeakRef(stmt);
+      this.#uncachedQueries.add(ref);
+      this.#uncachedQueryFinalizer.register(stmt, ref);
     }
 
     return stmt;
