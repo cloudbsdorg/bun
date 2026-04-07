@@ -3533,6 +3533,10 @@ GlobalObject::PromiseFunctions GlobalObject::promiseHandlerID(Zig::FFIFunction h
         return GlobalObject::PromiseFunctions::Bun__CronJob__onPromiseResolve;
     } else if (handler == Bun__CronJob__onPromiseReject) {
         return GlobalObject::PromiseFunctions::Bun__CronJob__onPromiseReject;
+    } else if (handler == Bun__OtelSpan__onActiveResolve) {
+        return GlobalObject::PromiseFunctions::Bun__OtelSpan__onActiveResolve;
+    } else if (handler == Bun__OtelSpan__onActiveReject) {
+        return GlobalObject::PromiseFunctions::Bun__OtelSpan__onActiveReject;
     } else {
         RELEASE_ASSERT_NOT_REACHED();
     }
