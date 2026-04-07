@@ -663,8 +663,9 @@ Configure a minimum age (in seconds) for npm package versions. Package versions 
 [install]
 # Only install package versions published at least 3 days ago
 minimumReleaseAge = 259200
-# These packages will bypass the 3-day minimum age requirement
-minimumReleaseAgeExcludes = ["@types/bun", "typescript"]
+# Bare package names bypass the age gate for every version; entries of
+# the form `name@version` only whitelist that single vetted version.
+minimumReleaseAgeExcludes = ["@types/bun", "typescript@5.4.5"]
 ```
 
 For more details see [Minimum release age](/pm/cli/install#minimum-release-age) in the install documentation.

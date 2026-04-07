@@ -1467,13 +1467,78 @@ pub const PackageManifest = struct {
         return null;
     }
 
+    /// An entry in `minimumReleaseAgeExcludes`. A `version` of `null` means
+    /// a bare package-name entry that whitelists every version of the
+    /// package. A non-null `version` is the raw slice after the `@`
+    /// separator and is validated lazily in `isVersionExplicitlyExcluded`.
+    const ParsedAgeFilterExclusion = struct {
+        name: string,
+        version: ?string,
+    };
+
+    /// Parse one entry from `minimumReleaseAgeExcludes`:
+    /// - `"foo"`          → `{ "foo", null }`
+    /// - `"foo@1.2.3"`    → `{ "foo", "1.2.3" }`
+    /// - `"@a/b"`         → `{ "@a/b", null }`      (scoped, no version)
+    /// - `"@a/b@1.2.3"`   → `{ "@a/b", "1.2.3" }`   (scoped, pinned)
+    /// - `"foo@"`         → `{ "foo@", null }`      (dangling `@`, treat as bare name)
+    fn parseAgeFilterExclusion(entry: string) ParsedAgeFilterExclusion {
+        if (entry.len == 0) return .{ .name = entry, .version = null };
+        // A leading '@' is the scope marker, not a version separator.
+        const scan_start: usize = if (entry[0] == '@') 1 else 0;
+        if (scan_start >= entry.len) return .{ .name = entry, .version = null };
+        const rel_at = strings.lastIndexOfChar(entry[scan_start..], '@') orelse {
+            return .{ .name = entry, .version = null };
+        };
+        const at_idx = scan_start + rel_at;
+        // Nothing after the '@' — treat as a plain bare name (don't
+        // silently match every version).
+        if (at_idx + 1 >= entry.len) return .{ .name = entry, .version = null };
+        return .{ .name = entry[0..at_idx], .version = entry[at_idx + 1 ..] };
+    }
+
+    /// Returns true iff `exclusions` contains a bare package-name entry
+    /// that matches this manifest. Bare entries whitelist every version
+    /// of the package (legacy behavior). Version-pinned entries of the
+    /// form `name@version` are handled by `isVersionExplicitlyExcluded`.
     pub fn shouldExcludeFromAgeFilter(this: *const PackageManifest, exclusions: ?[]const []const u8) bool {
         if (exclusions) |excl| {
             const pkg_name = this.name();
-            for (excl) |excluded| {
-                if (strings.eql(pkg_name, excluded)) {
+            for (excl) |entry| {
+                const parts = parseAgeFilterExclusion(entry);
+                if (parts.version != null) continue;
+                if (strings.eql(pkg_name, parts.name)) {
                     return true;
                 }
+            }
+        }
+        return false;
+    }
+
+    /// Returns true iff `exclusions` contains an entry of the form
+    /// `name@version` (or `@scope/name@version`) that matches this
+    /// manifest and `version` exactly. Lets users punch a hole for
+    /// exactly one vetted version without disabling the age gate for
+    /// every future release of the package.
+    pub fn isVersionExplicitlyExcluded(
+        this: *const PackageManifest,
+        version: Semver.Version,
+        exclusions: ?[]const []const u8,
+    ) bool {
+        const excl = exclusions orelse return false;
+        const pkg_name = this.name();
+        for (excl) |entry| {
+            const parts = parseAgeFilterExclusion(entry);
+            const version_str = parts.version orelse continue;
+            if (!strings.eql(pkg_name, parts.name)) continue;
+            const parsed = Semver.Version.parseUTF8(version_str);
+            // Silently ignore unparseable or range-shaped version pins
+            // (e.g. `"foo@^1.0.0"`) — the feature is an exact-match
+            // whitelist only.
+            if (!parsed.valid or parsed.wildcard != .none) continue;
+            const parsed_version = parsed.version.min();
+            if (parsed_version.order(version, version_str, this.string_buf) == .eq) {
+                return true;
             }
         }
         return false;
@@ -1487,6 +1552,20 @@ pub const PackageManifest = struct {
         return package_version.publish_timestamp_ms > current_timestamp_ms - minimum_release_age_ms;
     }
 
+    /// Combines the age check with the version-specific exclusion list —
+    /// a version that is both past the age gate and explicitly pinned in
+    /// `exclusions` is reported as not filtered.
+    pub inline fn isVersionFilteredByAge(
+        this: *const PackageManifest,
+        version: Semver.Version,
+        package_version: *const PackageVersion,
+        minimum_release_age_ms: f64,
+        exclusions: ?[]const []const u8,
+    ) bool {
+        if (!isPackageVersionTooRecent(package_version, minimum_release_age_ms)) return false;
+        return !this.isVersionExplicitlyExcluded(version, exclusions);
+    }
+
     fn searchVersionList(
         this: *const PackageManifest,
         versions: []const Semver.Version,
@@ -1494,6 +1573,7 @@ pub const PackageManifest = struct {
         group: Semver.Query.Group,
         group_buf: string,
         minimum_release_age_ms: f64,
+        exclusions: ?[]const []const u8,
         newest_filtered: *?Semver.Version,
     ) ?FindVersionResult {
         var prev_package_blocked_from_age: ?*const PackageVersion = null;
@@ -1509,7 +1589,7 @@ pub const PackageManifest = struct {
             const version = versions[i];
             if (group.satisfies(version, group_buf, this.string_buf)) {
                 const package = &packages[i];
-                if (isPackageVersionTooRecent(package, minimum_release_age_ms)) {
+                if (this.isVersionFilteredByAge(version, package, minimum_release_age_ms, exclusions)) {
                     if (newest_filtered.* == null) newest_filtered.* = version;
                     prev_package_blocked_from_age = package;
                 }
@@ -1612,7 +1692,7 @@ pub const PackageManifest = struct {
         const seven_days_ms: f64 = 7 * std.time.ms_per_day;
         const stability_window_ms = @min(min_age_ms, seven_days_ms);
 
-        const dist_too_recent = isPackageVersionTooRecent(dist_result.package, min_age_ms);
+        const dist_too_recent = this.isVersionFilteredByAge(dist_result.version, dist_result.package, min_age_ms, exclusions);
         if (!dist_too_recent) {
             return .{ .found = dist_result };
         }
@@ -1647,7 +1727,7 @@ pub const PackageManifest = struct {
                 if (!strings.eql(actual_tag, expected_tag)) continue;
             }
 
-            if (isPackageVersionTooRecent(package, min_age_ms)) {
+            if (this.isVersionFilteredByAge(version, package, min_age_ms, exclusions)) {
                 prev_package_blocked_from_age = package;
                 continue;
             }
@@ -1715,7 +1795,7 @@ pub const PackageManifest = struct {
         if (left.op == .eql) {
             const result = this.findByVersion(left.version);
             if (result) |r| {
-                if (isPackageVersionTooRecent(r.package, min_age_ms)) {
+                if (this.isVersionFilteredByAge(r.version, r.package, min_age_ms, exclusions)) {
                     return .{ .err = .too_recent };
                 }
                 return .{ .found = r };
@@ -1725,7 +1805,7 @@ pub const PackageManifest = struct {
 
         if (this.findByDistTag("latest")) |result| {
             if (group.satisfies(result.version, group_buf, this.string_buf)) {
-                if (isPackageVersionTooRecent(result.package, min_age_ms)) {
+                if (this.isVersionFilteredByAge(result.version, result.package, min_age_ms, exclusions)) {
                     newest_filtered = result.version;
                 }
                 if (newest_filtered == null) {
@@ -1746,6 +1826,7 @@ pub const PackageManifest = struct {
             group,
             group_buf,
             min_age_ms,
+            exclusions,
             &newest_filtered,
         )) |result| {
             return result;
@@ -1758,6 +1839,7 @@ pub const PackageManifest = struct {
                 group,
                 group_buf,
                 min_age_ms,
+                exclusions,
                 &newest_filtered,
             )) |result| {
                 return result;

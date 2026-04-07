@@ -1233,6 +1233,138 @@ registry = "${mockRegistryUrl}"`,
       expect(lockfile).toContain("regular-package@2.1.0");
       expect(lockfile).not.toContain("regular-package@3.0.0");
     });
+
+    // Regression test for https://github.com/oven-sh/bun/issues/28967 —
+    // `minimumReleaseAgeExcludes` should accept `name@version` entries
+    // that whitelist exactly one version without opening the door to
+    // every future release of the same package.
+    test("name@version exclusion whitelists only the pinned version", async () => {
+      using dir = tempDir("exclusions-version-pinned", {
+        "package.json": JSON.stringify({
+          dependencies: {
+            "excluded-package": "*",
+          },
+        }),
+        "bunfig.toml": `[install]
+minimumReleaseAge = ${5 * SECONDS_PER_DAY}
+minimumReleaseAgeExcludes = ["excluded-package@1.0.1"]
+registry = "${mockRegistryUrl}"`,
+      });
+
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "install"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
+      expect(stderr).not.toContain("error:");
+      expect(exitCode).toBe(0);
+
+      const lockfile = await Bun.file(`${dir}/bun.lock`).text();
+      // 1.0.1 is 12h old (would normally be filtered) but is explicitly
+      // whitelisted by the `@1.0.1` pin.
+      expect(lockfile).toContain("excluded-package@1.0.1");
+      expect(lockfile).not.toContain("excluded-package@1.0.0");
+    });
+
+    test("name@version exclusion does not whitelist other versions of the same package", async () => {
+      using dir = tempDir("exclusions-wrong-version", {
+        "package.json": JSON.stringify({
+          dependencies: {
+            "excluded-package": "*",
+          },
+        }),
+        // Pinning 0.9.0 (which doesn't exist on the mock registry) must
+        // NOT leak the age-gate bypass to the real 1.0.1 release.
+        "bunfig.toml": `[install]
+minimumReleaseAge = ${5 * SECONDS_PER_DAY}
+minimumReleaseAgeExcludes = ["excluded-package@0.9.0"]
+registry = "${mockRegistryUrl}"`,
+      });
+
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "install"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
+      expect(stderr).not.toContain("error:");
+      expect(exitCode).toBe(0);
+
+      const lockfile = await Bun.file(`${dir}/bun.lock`).text();
+      // The pin is for a version that doesn't exist, so the age gate
+      // stays in effect and we fall back to 1.0.0 (10 days old).
+      expect(lockfile).toContain("excluded-package@1.0.0");
+      expect(lockfile).not.toContain("excluded-package@1.0.1");
+    });
+
+    test("scoped name@version exclusion whitelists only the pinned version", async () => {
+      using dir = tempDir("exclusions-scoped-pinned", {
+        "package.json": JSON.stringify({
+          dependencies: {
+            "@scope/scoped-package": "*",
+          },
+        }),
+        "bunfig.toml": `[install]
+minimumReleaseAge = ${5 * SECONDS_PER_DAY}
+minimumReleaseAgeExcludes = ["@scope/scoped-package@2.0.0"]
+registry = "${mockRegistryUrl}"`,
+      });
+
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "install"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
+      expect(stderr).not.toContain("error:");
+      expect(exitCode).toBe(0);
+
+      const lockfile = await Bun.file(`${dir}/bun.lock`).text();
+      // 2.0.0 is 1 day old (would be filtered) but is explicitly
+      // whitelisted. Without the pin, the install would pick 1.5.0.
+      expect(lockfile).toContain("@scope/scoped-package@2.0.0");
+      expect(lockfile).not.toContain("@scope/scoped-package@1.5.0");
+    });
+
+    test("bare scoped name exclusion still whitelists every version", async () => {
+      using dir = tempDir("exclusions-scoped-bare", {
+        "package.json": JSON.stringify({
+          dependencies: {
+            "@scope/scoped-package": "*",
+          },
+        }),
+        "bunfig.toml": `[install]
+minimumReleaseAge = ${5 * SECONDS_PER_DAY}
+minimumReleaseAgeExcludes = ["@scope/scoped-package"]
+registry = "${mockRegistryUrl}"`,
+      });
+
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "install"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
+      expect(stderr).not.toContain("error:");
+      expect(exitCode).toBe(0);
+
+      const lockfile = await Bun.file(`${dir}/bun.lock`).text();
+      // Bare name bypass — picks the 1-day-old latest.
+      expect(lockfile).toContain("@scope/scoped-package@2.0.0");
+    });
   });
 
   describe("configuration", () => {
