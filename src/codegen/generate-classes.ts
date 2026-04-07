@@ -2770,6 +2770,13 @@ const classes: ClassDefinition[] = [];
   for (const file of files) {
     const filepath = path.resolve(file);
     const result = require(filepath);
+    // An empty `export default []` is a deliberate tombstone — some branches
+    // track a `.classes.ts` file without the backing Zig type so that
+    // `git checkout` restores a deterministic, buildable copy over any stale
+    // working-tree version left behind by a previous checkout. Skip silently.
+    if (Array.isArray(result?.default) && result.default.length === 0) {
+      continue;
+    }
     if (!(result?.default?.length ?? 0)) {
       errors.push(
         new TypeError(
