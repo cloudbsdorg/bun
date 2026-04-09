@@ -614,6 +614,12 @@ pub fn unhandledRejection(this: *jsc.VirtualMachine, globalObject: *JSGlobalObje
             const wrapped_reason = wrapUnhandledRejectionErrorForUncaughtException(globalObject, reason);
             _ = this.uncaughtException(globalObject, wrapped_reason, true);
             if (Bun__handleUnhandledRejection(globalObject, reason, promise) > 0) return;
+            // If the worker's `error` event listener cancelled the event,
+            // skip the spurious UnhandledRejectionWarning — the error was
+            // already handled by the listener.
+            if (this.worker) |worker| {
+                if (worker.error_event_prevented) return;
+            }
             jsc.fromJSHostCallGeneric(globalObject, @src(), Bun__promises__emitUnhandledRejectionWarning, .{ globalObject, reason, promise }) catch |err| {
                 _ = globalObject.reportUncaughtException(globalObject.takeException(err).asException(globalObject.vm()).?);
             };
@@ -675,12 +681,31 @@ pub fn uncaughtException(this: *jsc.VirtualMachine, globalObject: *JSGlobalObjec
     }
     this.is_handling_uncaught_exception = true;
     defer this.is_handling_uncaught_exception = false;
-    const handled = Bun__handleUncaughtException(globalObject, err.toError() orelse err, if (is_rejection) 1 else 0) > 0;
+    var handled = Bun__handleUncaughtException(globalObject, err.toError() orelse err, if (is_rejection) 1 else 0) > 0;
     if (!handled) {
         // TODO maybe we want a separate code path for uncaught exceptions
         this.unhandled_error_counter += 1;
+        const prev_exit_code = this.exit_handler.exit_code;
         this.exit_handler.exit_code = 1;
         this.onUnhandledRejection(this, globalObject, err);
+        // If the worker's `error` event listener cancelled the event (see
+        // web_worker.zig's onUnhandledRejection), treat it as handled so
+        // the `.throw` `unhandledRejection` caller's guard takes the
+        // early-return path instead of falling through to a second
+        // dispatch. Also restore the pre-error exit code instead of
+        // leaving the caller's `= 1` in place — this preserves any
+        // `process.exitCode = N` the user set before the cancelled error
+        // fired. Only restore when the listener left our written `1` in
+        // place; if the listener itself assigned a new exit code (e.g.
+        // `process.exitCode = 42` inside the handler), honor that.
+        if (this.worker) |worker| {
+            if (worker.error_event_prevented) {
+                handled = true;
+                if (this.exit_handler.exit_code == 1) {
+                    this.exit_handler.exit_code = prev_exit_code;
+                }
+            }
+        }
     }
     return handled;
 }
