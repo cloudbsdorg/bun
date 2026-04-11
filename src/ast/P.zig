@@ -5113,16 +5113,18 @@ pub fn NewParser_(
                     .target = field_target_builder.build(p, is_static_accessor, class, prop_loc),
                     .index = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
                 }, prop_loc) }, prop_loc);
-                const get_fn_expr = p.newExpr(E.Function{ .func = G.Fn{
-                    .body = .{ .loc = prop_loc, .stmts = get_body_stmts },
-                    .flags = Flags.Function.init(.{ .is_unique_formal_parameters = true }),
-                    // The legacy-decorator metadata emitter reads
-                    // `func.return_ts_metadata` for .get properties, so copy
-                    // the user's type annotation across so `design:type`
-                    // matches the original `accessor x: T = ...` annotation
-                    // under `emitDecoratorMetadata: true`.
-                    .return_ts_metadata = prop.ts_metadata,
-                } }, prop_loc);
+                const get_fn_expr = p.newExpr(E.Function{
+                    .func = G.Fn{
+                        .body = .{ .loc = prop_loc, .stmts = get_body_stmts },
+                        .flags = Flags.Function.init(.{ .is_unique_formal_parameters = true }),
+                        // The legacy-decorator metadata emitter reads
+                        // `func.return_ts_metadata` for .get properties, so copy
+                        // the user's type annotation across so `design:type`
+                        // matches the original `accessor x: T = ...` annotation
+                        // under `emitDecoratorMetadata: true`.
+                        .return_ts_metadata = prop.ts_metadata,
+                    },
+                }, prop_loc);
                 var method_flags = prop.flags;
                 method_flags.insert(.is_method);
                 bun.handleOom(rewritten.append(.{
