@@ -1679,7 +1679,9 @@ pub fn VisitExpr(
                 // Rewrite `accessor x = ...` fields into `#storage + get/set`
                 // for class expressions that aren't going through the standard-
                 // decorators lowering (JSC does not parse the `accessor` keyword).
-                p.rewriteAutoAccessorProperties(e_);
+                // No prefix-statement sink here — computed-key hoisting only
+                // applies in statement position.
+                p.rewriteAutoAccessorProperties(e_, null);
 
                 // Remove unused class names when minifying (only when bundling is enabled)
                 // unless --keep-names is specified

@@ -4954,7 +4954,23 @@ pub fn NewParser_(
         ///
         /// Runs POST-visit, so synthesized `G.Fn`s do not need parse-time
         /// scopes — they go directly to the printer.
-        pub fn rewriteAutoAccessorProperties(p: *P, class: *G.Class) void {
+        ///
+        /// Computed keys (`accessor [expr] = init`) are hoisted into a temp
+        /// `var _computedKey = expr;` prepended to `prefix_stmts`, so the
+        /// key expression is evaluated exactly once even though the rewrite
+        /// expands the property into three class members (field, getter,
+        /// setter). The caller is responsible for emitting the prefix
+        /// statements before the class declaration. If `prefix_stmts` is
+        /// null (e.g. during class-expression lowering where we cannot
+        /// easily emit outer statements), computed-key hoisting is skipped
+        /// and the key is reused — a known-acceptable limitation because
+        /// the keys were already evaluated during visit before reaching
+        /// this helper.
+        pub fn rewriteAutoAccessorProperties(
+            p: *P,
+            class: *G.Class,
+            prefix_stmts: ?*ListManaged(Stmt),
+        ) void {
             var has_any = false;
             for (class.properties) |prop| {
                 if (prop.kind == .auto_accessor) {
@@ -4964,91 +4980,169 @@ pub fn NewParser_(
             }
             if (!has_any) return;
 
-            var rewritten = ListManaged(Property).initCapacity(
+            var rewritten = bun.handleOom(ListManaged(Property).initCapacity(
                 p.allocator,
                 class.properties.len,
-            ) catch bun.outOfMemory();
+            ));
 
             var counter: u32 = 0;
             for (class.properties) |prop| {
                 if (prop.kind != .auto_accessor) {
-                    rewritten.append(prop) catch bun.outOfMemory();
+                    bun.handleOom(rewritten.append(prop));
                     continue;
                 }
 
                 const prop_loc = if (prop.key) |k| k.loc else logger.Loc.Empty;
 
                 // Build a unique private name for the backing storage. For
-                // string keys we embed the key name for readability; for
-                // anything else (computed, numeric, etc.) we use a counter.
+                // UTF-8 string keys that are valid JavaScript identifiers we
+                // embed the key name for readability; for anything else
+                // (computed keys, numeric keys, UTF-16 keys, keys with
+                // non-identifier characters like `"foo-bar"` or `"1"`, etc.)
+                // we fall back to a counter so the resulting `#name` is
+                // always a valid private identifier.
                 const storage_name: string = brk: {
                     if (!prop.flags.contains(.is_computed)) {
                         if (prop.key) |k| {
                             if (k.data == .e_string) {
-                                break :brk std.fmt.allocPrint(
-                                    p.allocator,
-                                    "#{s}_accessor_storage",
-                                    .{k.data.e_string.data},
-                                ) catch bun.outOfMemory();
+                                const key_str = k.data.e_string;
+                                if (key_str.isUTF8() and key_str.isIdentifier(p.allocator)) {
+                                    break :brk bun.handleOom(std.fmt.allocPrint(
+                                        p.allocator,
+                                        "#{s}_accessor_storage",
+                                        .{key_str.data},
+                                    ));
+                                }
                             }
                         }
                     }
                     const n = counter;
                     counter += 1;
-                    break :brk std.fmt.allocPrint(
+                    break :brk bun.handleOom(std.fmt.allocPrint(
                         p.allocator,
                         "#_accessor_storage_{d}",
                         .{n},
-                    ) catch bun.outOfMemory();
+                    ));
                 };
 
                 const storage_kind: Symbol.Kind = if (prop.flags.contains(.is_static))
                     .private_static_field
                 else
                     .private_field;
-                const storage_ref = p.newSymbol(storage_kind, storage_name) catch bun.outOfMemory();
+                const storage_ref = bun.handleOom(p.newSymbol(storage_kind, storage_name));
                 bun.handleOom(p.current_scope.generated.append(p.allocator, storage_ref));
+
+                // For computed keys, hoist the key expression into a temp so it
+                // only evaluates once. The same `prop.key` is otherwise reused
+                // by both the getter and setter members below, which would
+                // double-evaluate side effects in the user's key expression.
+                var shared_key = prop.key;
+                if (prop.flags.contains(.is_computed)) {
+                    if (prefix_stmts) |ps| {
+                        if (prop.key) |k| {
+                            const key_ref = bun.handleOom(p.newSymbol(
+                                .other,
+                                bun.handleOom(std.fmt.allocPrint(
+                                    p.allocator,
+                                    "_computedAccessorKey{d}",
+                                    .{counter},
+                                )),
+                            ));
+                            bun.handleOom(p.current_scope.generated.append(p.allocator, key_ref));
+                            counter += 1;
+
+                            const decls = bun.handleOom(p.allocator.alloc(G.Decl, 1));
+                            decls[0] = .{
+                                .binding = p.b(B.Identifier{ .ref = key_ref }, k.loc),
+                                .value = k,
+                            };
+                            bun.handleOom(ps.append(p.s(
+                                S.Local{ .kind = .k_var, .decls = G.Decl.List.fromOwnedSlice(decls) },
+                                k.loc,
+                            )));
+
+                            shared_key = p.newExpr(E.Identifier{ .ref = key_ref }, k.loc);
+                        }
+                    }
+                }
 
                 // `#storage` private field with the original initializer.
                 var storage_flags = prop.flags;
                 storage_flags.remove(.is_computed);
-                rewritten.append(.{
+                bun.handleOom(rewritten.append(.{
                     .kind = .normal,
                     .flags = storage_flags,
                     .key = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
                     .initializer = prop.initializer,
-                }) catch bun.outOfMemory();
+                }));
 
-                // Getter: `get <key>() { return this.#storage; }`
-                const get_body_stmts = p.allocator.alloc(Stmt, 1) catch bun.outOfMemory();
+                // For static accessors we must access the backing private
+                // field through the class binding (e.g. `Counter.#storage`)
+                // rather than `this.#storage`. Static private fields only
+                // exist on the declaring class; accessing them through a
+                // subclass (`Sub.count` where `class Sub extends Counter`)
+                // triggers a TypeError from the brand check. For anonymous
+                // class expressions there's no visible class name binding,
+                // so we fall back to `this` — subclassing an anonymous
+                // class expression and accessing its statics is a niche
+                // case and matches TypeScript's behavior when it cannot
+                // capture an outer name.
+                const field_target_builder = struct {
+                    fn build(
+                        parser: *P,
+                        is_static: bool,
+                        cls: *const G.Class,
+                        loc: logger.Loc,
+                    ) Expr {
+                        if (is_static) {
+                            if (cls.class_name) |cn| {
+                                if (cn.ref) |r| {
+                                    parser.recordUsage(r);
+                                    return parser.newExpr(E.Identifier{ .ref = r }, loc);
+                                }
+                            }
+                        }
+                        return parser.newExpr(E.This{}, loc);
+                    }
+                };
+                const is_static_accessor = prop.flags.contains(.is_static);
+
+                // Getter: `get <key>() { return <target>.#storage; }`
+                const get_body_stmts = bun.handleOom(p.allocator.alloc(Stmt, 1));
                 get_body_stmts[0] = p.s(S.Return{ .value = p.newExpr(E.Index{
-                    .target = p.newExpr(E.This{}, prop_loc),
+                    .target = field_target_builder.build(p, is_static_accessor, class, prop_loc),
                     .index = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
                 }, prop_loc) }, prop_loc);
                 const get_fn_expr = p.newExpr(E.Function{ .func = G.Fn{
                     .body = .{ .loc = prop_loc, .stmts = get_body_stmts },
                     .flags = Flags.Function.init(.{ .is_unique_formal_parameters = true }),
+                    // The legacy-decorator metadata emitter reads
+                    // `func.return_ts_metadata` for .get properties, so copy
+                    // the user's type annotation across so `design:type`
+                    // matches the original `accessor x: T = ...` annotation
+                    // under `emitDecoratorMetadata: true`.
+                    .return_ts_metadata = prop.ts_metadata,
                 } }, prop_loc);
                 var method_flags = prop.flags;
                 method_flags.insert(.is_method);
-                rewritten.append(.{
+                bun.handleOom(rewritten.append(.{
                     .kind = .get,
                     .flags = method_flags,
-                    .key = prop.key,
+                    .key = shared_key,
                     .value = get_fn_expr,
                     .ts_decorators = prop.ts_decorators,
                     .ts_metadata = prop.ts_metadata,
-                }) catch bun.outOfMemory();
+                }));
 
-                // Setter: `set <key>(v) { this.#storage = v; }`
-                const setter_param_ref = p.newSymbol(.other, "v") catch bun.outOfMemory();
+                // Setter: `set <key>(v) { <target>.#storage = v; }`
+                const setter_param_ref = bun.handleOom(p.newSymbol(.other, "v"));
                 bun.handleOom(p.current_scope.generated.append(p.allocator, setter_param_ref));
-                const setter_args = p.allocator.alloc(G.Arg, 1) catch bun.outOfMemory();
+                const setter_args = bun.handleOom(p.allocator.alloc(G.Arg, 1));
                 setter_args[0] = .{ .binding = p.b(B.Identifier{ .ref = setter_param_ref }, prop_loc) };
-                const set_body_stmts = p.allocator.alloc(Stmt, 1) catch bun.outOfMemory();
+                const set_body_stmts = bun.handleOom(p.allocator.alloc(Stmt, 1));
                 set_body_stmts[0] = Stmt.assign(
                     p.newExpr(E.Index{
-                        .target = p.newExpr(E.This{}, prop_loc),
+                        .target = field_target_builder.build(p, is_static_accessor, class, prop_loc),
                         .index = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
                     }, prop_loc),
                     p.newExpr(E.Identifier{ .ref = setter_param_ref }, prop_loc),
@@ -5058,12 +5152,12 @@ pub fn NewParser_(
                     .body = .{ .loc = prop_loc, .stmts = set_body_stmts },
                     .flags = Flags.Function.init(.{ .is_unique_formal_parameters = true }),
                 } }, prop_loc);
-                rewritten.append(.{
+                bun.handleOom(rewritten.append(.{
                     .kind = .set,
                     .flags = method_flags,
-                    .key = prop.key,
+                    .key = shared_key,
                     .value = set_fn_expr,
-                }) catch bun.outOfMemory();
+                }));
             }
 
             class.properties = rewritten.items;
@@ -5084,13 +5178,21 @@ pub fn NewParser_(
                     // under the legacy-decorator (or no-decorator) path, since JSC
                     // does not natively parse the `accessor` keyword. The standard-
                     // decorator lowering above has its own auto_accessor handling.
-                    p.rewriteAutoAccessorProperties(&stmt.data.s_class.class);
+                    // Pass `accessor_prefix_stmts` so computed keys can be hoisted
+                    // into `var` declarations emitted before the class statement.
+                    var accessor_prefix_stmts = ListManaged(Stmt).init(p.allocator);
+                    p.rewriteAutoAccessorProperties(&stmt.data.s_class.class, &accessor_prefix_stmts);
 
                     if (comptime !is_typescript_enabled) {
                         if (!stmt.data.s_class.class.has_decorators) {
-                            var stmts = p.allocator.alloc(Stmt, 1) catch unreachable;
-                            stmts[0] = stmt;
-                            return stmts;
+                            if (accessor_prefix_stmts.items.len == 0) {
+                                var stmts = p.allocator.alloc(Stmt, 1) catch unreachable;
+                                stmts[0] = stmt;
+                                return stmts;
+                            }
+                            // Emit hoisted computed-key var decls before the class.
+                            bun.handleOom(accessor_prefix_stmts.append(stmt));
+                            return accessor_prefix_stmts.items;
                         }
                     }
                     var class = &stmt.data.s_class.class;
@@ -5139,8 +5241,11 @@ pub fn NewParser_(
                             const descriptor_key = prop.key.?;
                             const loc = descriptor_key.loc;
 
-                            // TODO: when we have the `accessor` modifier, add `and !prop.flags.contains(.has_accessor_modifier)` to
-                            // the if statement.
+                            // Auto-accessor fields never reach this loop directly —
+                            // `rewriteAutoAccessorProperties` has already turned each
+                            // one into a getter/setter pair with `is_method = true`,
+                            // so the expected `null` descriptor kind naturally falls
+                            // out of the `is_method` branch below.
                             const descriptor_kind: Expr = if (!prop.flags.contains(.is_method))
                                 p.newExpr(E.Undefined{}, loc)
                             else
@@ -5348,9 +5453,13 @@ pub fn NewParser_(
                         // https://github.com/evanw/esbuild/blob/e9413cc4f7ab87263ea244a999c6fa1f1e34dc65/internal/js_parser/js_parser_lower.go#L2742
                     }
 
-                    var stmts_count: usize = 1 + static_members.items.len + instance_decorators.items.len + static_decorators.items.len;
+                    var stmts_count: usize = 1 + accessor_prefix_stmts.items.len + static_members.items.len + instance_decorators.items.len + static_decorators.items.len;
                     if (class.ts_decorators.len > 0) stmts_count += 1;
                     var stmts = ListManaged(Stmt).initCapacity(p.allocator, stmts_count) catch unreachable;
+                    // Hoisted computed-key var declarations come before the class
+                    // itself so the key expressions evaluate exactly once (the
+                    // synthesized getter and setter below refer to the temp refs).
+                    stmts.appendSliceAssumeCapacity(accessor_prefix_stmts.items);
                     stmts.appendAssumeCapacity(stmt);
                     stmts.appendSliceAssumeCapacity(static_members.items);
                     stmts.appendSliceAssumeCapacity(instance_decorators.items);
