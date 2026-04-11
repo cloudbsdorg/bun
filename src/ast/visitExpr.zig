@@ -1676,6 +1676,11 @@ pub fn VisitExpr(
                     return p.lowerStandardDecoratorsExpr(e_, expr.loc, decorator_name_from_context);
                 }
 
+                // Rewrite `accessor x = ...` fields into `#storage + get/set`
+                // for class expressions that aren't going through the standard-
+                // decorators lowering (JSC does not parse the `accessor` keyword).
+                p.rewriteAutoAccessorProperties(e_);
+
                 // Remove unused class names when minifying (only when bundling is enabled)
                 // unless --keep-names is specified
                 if (p.options.features.minify_syntax and p.options.bundle and

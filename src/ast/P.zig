@@ -4939,6 +4939,136 @@ pub fn NewParser_(
             stmts.append(closure) catch unreachable;
         }
 
+        /// Rewrite each `accessor x = ...` property into a `#x_accessor_storage`
+        /// private field plus a `get x()` / `set x(v)` pair. This matches what
+        /// TypeScript emits under `experimentalDecorators: true` and what Bun's
+        /// standard-decorators lowering path does — JavaScriptCore does not
+        /// support the `accessor` keyword at runtime, so the rewrite is what
+        /// makes the code actually run, not just a decorator-semantics choice.
+        ///
+        /// Any `ts_decorators` attached to the auto-accessor property are
+        /// carried over to the synthesized getter, which the legacy-decorator
+        /// emission loop then treats like any other decorated method (and
+        /// passes `null` as the descriptor_kind to `__legacyDecorateClassTS`,
+        /// matching TypeScript's behavior).
+        ///
+        /// Runs POST-visit, so synthesized `G.Fn`s do not need parse-time
+        /// scopes — they go directly to the printer.
+        pub fn rewriteAutoAccessorProperties(p: *P, class: *G.Class) void {
+            var has_any = false;
+            for (class.properties) |prop| {
+                if (prop.kind == .auto_accessor) {
+                    has_any = true;
+                    break;
+                }
+            }
+            if (!has_any) return;
+
+            var rewritten = ListManaged(Property).initCapacity(
+                p.allocator,
+                class.properties.len,
+            ) catch bun.outOfMemory();
+
+            var counter: u32 = 0;
+            for (class.properties) |prop| {
+                if (prop.kind != .auto_accessor) {
+                    rewritten.append(prop) catch bun.outOfMemory();
+                    continue;
+                }
+
+                const prop_loc = if (prop.key) |k| k.loc else logger.Loc.Empty;
+
+                // Build a unique private name for the backing storage. For
+                // string keys we embed the key name for readability; for
+                // anything else (computed, numeric, etc.) we use a counter.
+                const storage_name: string = brk: {
+                    if (!prop.flags.contains(.is_computed)) {
+                        if (prop.key) |k| {
+                            if (k.data == .e_string) {
+                                break :brk std.fmt.allocPrint(
+                                    p.allocator,
+                                    "#{s}_accessor_storage",
+                                    .{k.data.e_string.data},
+                                ) catch bun.outOfMemory();
+                            }
+                        }
+                    }
+                    const n = counter;
+                    counter += 1;
+                    break :brk std.fmt.allocPrint(
+                        p.allocator,
+                        "#_accessor_storage_{d}",
+                        .{n},
+                    ) catch bun.outOfMemory();
+                };
+
+                const storage_kind: Symbol.Kind = if (prop.flags.contains(.is_static))
+                    .private_static_field
+                else
+                    .private_field;
+                const storage_ref = p.newSymbol(storage_kind, storage_name) catch bun.outOfMemory();
+                bun.handleOom(p.current_scope.generated.append(p.allocator, storage_ref));
+
+                // `#storage` private field with the original initializer.
+                var storage_flags = prop.flags;
+                storage_flags.remove(.is_computed);
+                rewritten.append(.{
+                    .kind = .normal,
+                    .flags = storage_flags,
+                    .key = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
+                    .initializer = prop.initializer,
+                }) catch bun.outOfMemory();
+
+                // Getter: `get <key>() { return this.#storage; }`
+                const get_body_stmts = p.allocator.alloc(Stmt, 1) catch bun.outOfMemory();
+                get_body_stmts[0] = p.s(S.Return{ .value = p.newExpr(E.Index{
+                    .target = p.newExpr(E.This{}, prop_loc),
+                    .index = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
+                }, prop_loc) }, prop_loc);
+                const get_fn_expr = p.newExpr(E.Function{ .func = G.Fn{
+                    .body = .{ .loc = prop_loc, .stmts = get_body_stmts },
+                    .flags = Flags.Function.init(.{ .is_unique_formal_parameters = true }),
+                } }, prop_loc);
+                var method_flags = prop.flags;
+                method_flags.insert(.is_method);
+                rewritten.append(.{
+                    .kind = .get,
+                    .flags = method_flags,
+                    .key = prop.key,
+                    .value = get_fn_expr,
+                    .ts_decorators = prop.ts_decorators,
+                    .ts_metadata = prop.ts_metadata,
+                }) catch bun.outOfMemory();
+
+                // Setter: `set <key>(v) { this.#storage = v; }`
+                const setter_param_ref = p.newSymbol(.other, "v") catch bun.outOfMemory();
+                bun.handleOom(p.current_scope.generated.append(p.allocator, setter_param_ref));
+                const setter_args = p.allocator.alloc(G.Arg, 1) catch bun.outOfMemory();
+                setter_args[0] = .{ .binding = p.b(B.Identifier{ .ref = setter_param_ref }, prop_loc) };
+                const set_body_stmts = p.allocator.alloc(Stmt, 1) catch bun.outOfMemory();
+                set_body_stmts[0] = Stmt.assign(
+                    p.newExpr(E.Index{
+                        .target = p.newExpr(E.This{}, prop_loc),
+                        .index = p.newExpr(E.PrivateIdentifier{ .ref = storage_ref }, prop_loc),
+                    }, prop_loc),
+                    p.newExpr(E.Identifier{ .ref = setter_param_ref }, prop_loc),
+                );
+                const set_fn_expr = p.newExpr(E.Function{ .func = G.Fn{
+                    .args = setter_args,
+                    .body = .{ .loc = prop_loc, .stmts = set_body_stmts },
+                    .flags = Flags.Function.init(.{ .is_unique_formal_parameters = true }),
+                } }, prop_loc);
+                rewritten.append(.{
+                    .kind = .set,
+                    .flags = method_flags,
+                    .key = prop.key,
+                    .value = set_fn_expr,
+                }) catch bun.outOfMemory();
+            }
+
+            class.properties = rewritten.items;
+        }
+
         pub fn lowerClass(
             noalias p: *P,
             stmtorexpr: js_ast.StmtOrExpr,
@@ -4949,6 +5079,12 @@ pub fn NewParser_(
                     if (stmt.data.s_class.class.should_lower_standard_decorators) {
                         return p.lowerStandardDecoratorsStmt(stmt);
                     }
+
+                    // Rewrite `accessor x = ...` fields into `#storage + get/set`
+                    // under the legacy-decorator (or no-decorator) path, since JSC
+                    // does not natively parse the `accessor` keyword. The standard-
+                    // decorator lowering above has its own auto_accessor handling.
+                    p.rewriteAutoAccessorProperties(&stmt.data.s_class.class);
 
                     if (comptime !is_typescript_enabled) {
                         if (!stmt.data.s_class.class.has_decorators) {
