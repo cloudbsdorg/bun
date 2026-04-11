@@ -99,6 +99,28 @@ test("static accessor field parses and runs under experimentalDecorators", async
   expect(exitCode).toBe(0);
 });
 
+// Also covers https://github.com/oven-sh/bun/issues/27335: the same bug
+// surfaced as a plain `public accessor name: string = "John"` class field
+// failing to parse, because the TypeScript `public` modifier leads into
+// the `.p_accessor` branch in `parseProperty` just like a decorator does.
+test("TypeScript accessibility modifier before accessor works", async () => {
+  const { stdout, stderr, exitCode } = await runWithExperimentalDecorators(`
+    class Person {
+      public accessor name: string = "John";
+      protected accessor age: number = 30;
+    }
+    const p = new Person();
+    console.log(p.name, (p as any).age);
+    p.name = "Jane";
+    (p as any).age = 31;
+    console.log(p.name, (p as any).age);
+  `);
+
+  expect(stderr).toBe("");
+  expect(stdout).toBe("John 30\nJane 31\n");
+  expect(exitCode).toBe(0);
+});
+
 test("accessor field in a class expression works under experimentalDecorators", async () => {
   const { stdout, stderr, exitCode } = await runWithExperimentalDecorators(`
     const Foo = class {
