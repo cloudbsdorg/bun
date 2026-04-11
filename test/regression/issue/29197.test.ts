@@ -34,11 +34,7 @@ async function runWithExperimentalDecorators(source: string) {
     stderr: "pipe",
   });
 
-  const [stdout, rawStderr, exitCode] = await Promise.all([
-    proc.stdout.text(),
-    proc.stderr.text(),
-    proc.exited,
-  ]);
+  const [stdout, rawStderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
   // Debug/ASAN builds print a JSC warning on startup. It's not from the code
   // under test, so strip it before making assertions.
