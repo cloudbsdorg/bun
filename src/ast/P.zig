@@ -4994,12 +4994,30 @@ pub fn NewParser_(
                 class.properties.len,
             ));
 
-            // Counter for synthesized backing-field names. Always use the
-            // counter form rather than deriving from the key — this avoids
-            // collisions with user-declared private fields (adversarial or
-            // accidental) and keeps the naming strategy uniform for string,
-            // numeric, computed, and private keys.
+            // Pre-scan the class's existing private-identifier members so our
+            // synthesized `#_accessor_storage_N` name cannot collide with a
+            // user-declared field of the same name. We look for any private
+            // key whose original name starts with our prefix and parse out
+            // the numeric suffix; the counter then starts one above the
+            // maximum we saw. This keeps the naming uniform for string,
+            // numeric, computed, and private keys while avoiding collisions
+            // with adversarial or accidental `#_accessor_storage_0` fields.
+            const storage_prefix = "#_accessor_storage_";
             var counter: u32 = 0;
+            for (class.properties) |existing| {
+                if (existing.key) |k| {
+                    if (k.data == .e_private_identifier) {
+                        const name = p.symbols.items[k.data.e_private_identifier.ref.innerIndex()].original_name;
+                        if (bun.strings.hasPrefixComptime(name, storage_prefix)) {
+                            const rest = name[storage_prefix.len..];
+                            if (std.fmt.parseInt(u32, rest, 10)) |n| {
+                                if (n + 1 > counter) counter = n + 1;
+                            } else |_| {}
+                        }
+                    }
+                }
+            }
+
             for (class.properties) |prop| {
                 if (prop.kind != .auto_accessor) {
                     bun.handleOom(rewritten.append(prop));
@@ -5031,21 +5049,35 @@ pub fn NewParser_(
                 if (prop.flags.contains(.is_computed)) {
                     if (prefix_stmts) |ps| {
                         if (prop.key) |k| {
-                            const tmp_n = counter;
-                            counter += 1;
-                            const tmp_name = bun.handleOom(std.fmt.allocPrint(
-                                p.allocator,
-                                "__bun_accessor_key_{d}$",
-                                .{tmp_n},
-                            ));
-                            const tmp_ref = bun.handleOom(p.newSymbol(.other, tmp_name));
-                            // The temp variable lives at the enclosing
-                            // hoisting scope via a `var` declaration, so
-                            // register it on the nearest such scope.
+                            // Walk up to the nearest hoisting scope; the
+                            // `var` declaration we're about to emit lives
+                            // there.
                             var hoist_scope = p.current_scope;
                             while (!hoist_scope.kindStopsHoisting()) {
                                 hoist_scope = hoist_scope.parent.?;
                             }
+
+                            // Pick a name that isn't already bound in the
+                            // hoisting scope. The `__bun_` prefix keeps us
+                            // out of typical user namespace, and the `$`
+                            // suffix is valid-but-rare in user code, but we
+                            // still loop-and-bump on the off chance a user
+                            // wrote one.
+                            const tmp_name = brk: {
+                                var n: u32 = counter;
+                                while (true) : (n += 1) {
+                                    const candidate = bun.handleOom(std.fmt.allocPrint(
+                                        p.allocator,
+                                        "__bun_accessor_key_{d}$",
+                                        .{n},
+                                    ));
+                                    if (!hoist_scope.members.contains(candidate)) {
+                                        counter = n + 1;
+                                        break :brk candidate;
+                                    }
+                                }
+                            };
+                            const tmp_ref = bun.handleOom(p.newSymbol(.other, tmp_name));
                             bun.handleOom(hoist_scope.generated.append(p.allocator, tmp_ref));
                             bun.handleOom(p.declared_symbols.append(p.allocator, .{
                                 .ref = tmp_ref,

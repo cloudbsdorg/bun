@@ -227,6 +227,53 @@ test("accessor field with a computed key evaluates the key exactly once", async 
   expect(exitCode).toBe(0);
 });
 
+test("synthesized backing storage does not collide with user private field", async () => {
+  // A hostile class can declare `#_accessor_storage_0` itself — the
+  // synthesized backing-field name must skip past any user-declared
+  // collision rather than silently emit two members with the same
+  // private identifier.
+  const { stdout, exitCode } = await runTS(`
+    class Foo {
+      #_accessor_storage_0 = 999;
+      accessor x = 1;
+      accessor y = 2;
+      getUserField() { return this.#_accessor_storage_0; }
+    }
+    const f = new Foo();
+    console.log(f.x, f.y, f.getUserField());
+    f.x = 10;
+    f.y = 20;
+    console.log(f.x, f.y, f.getUserField());
+  `);
+
+  expect(stdout).toBe("1 2 999\n10 20 999\n");
+  expect(exitCode).toBe(0);
+});
+
+test("computed-key temp does not clobber user variable of the same name", async () => {
+  // The temp variable we hoist for computed-key evaluation uses a
+  // `__bun_accessor_key_N$` name. If the user happens to bind that name
+  // at module scope, we must pick a different N rather than emit a
+  // duplicate `var` declaration.
+  const { stdout, exitCode } = await runTS(`
+    var __bun_accessor_key_0$ = "user-value";
+    let keyCalls = 0;
+    const key = () => { keyCalls++; return "k"; };
+    class Foo {
+      accessor [key()] = 1;
+    }
+    const f: any = new Foo();
+    console.log("user:" + __bun_accessor_key_0$);
+    console.log("f.k=" + f.k, "calls=" + keyCalls);
+    f.k = 42;
+    console.log("f.k=" + f.k, "calls=" + keyCalls);
+    console.log("user-after:" + __bun_accessor_key_0$);
+  `);
+
+  expect(stdout).toBe("user:user-value\nf.k=1 calls=1\nf.k=42 calls=1\nuser-after:user-value\n");
+  expect(exitCode).toBe(0);
+});
+
 test("decorator metadata: accessor field records its declared type", () => {
   // Under `experimentalDecorators: true` + `emitDecoratorMetadata: true`,
   // a decorated typed accessor must still get `design:type` pointing to the
