@@ -6421,6 +6421,7 @@ extern "C" JSC::EncodedJSValue Bun__REPL__formatValue(
     // Get the util.inspect function from the global object
     auto* bunGlobal = jsCast<Zig::GlobalObject*>(globalObject);
     JSC::JSValue inspectFn = bunGlobal->utilInspectFunction();
+    RETURN_IF_EXCEPTION(scope, JSC::JSValue::encode(JSC::jsUndefined()));
 
     if (!inspectFn || !inspectFn.isCallable()) {
         // Fallback to toString if util.inspect is not available
