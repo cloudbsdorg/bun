@@ -5003,15 +5003,17 @@ pub fn NewParser_(
             // numeric, computed, and private keys while avoiding collisions
             // with adversarial or accidental `#_accessor_storage_0` fields.
             const storage_prefix = "#_accessor_storage_";
-            var counter: u32 = 0;
+            // Use u64 so the counter can't wrap even for pathological classes
+            // where a user has declared `#_accessor_storage_<very-large>`.
+            var counter: u64 = 0;
             for (class.properties) |existing| {
                 if (existing.key) |k| {
                     if (k.data == .e_private_identifier) {
                         const name = p.symbols.items[k.data.e_private_identifier.ref.innerIndex()].original_name;
                         if (bun.strings.hasPrefixComptime(name, storage_prefix)) {
                             const rest = name[storage_prefix.len..];
-                            if (std.fmt.parseInt(u32, rest, 10)) |n| {
-                                if (n + 1 > counter) counter = n + 1;
+                            if (std.fmt.parseInt(u64, rest, 10)) |n| {
+                                if (n < std.math.maxInt(u64) and n + 1 > counter) counter = n + 1;
                             } else |_| {}
                         }
                     }
@@ -5064,7 +5066,7 @@ pub fn NewParser_(
                             // still loop-and-bump on the off chance a user
                             // wrote one.
                             const tmp_name = brk: {
-                                var n: u32 = counter;
+                                var n: u64 = counter;
                                 while (true) : (n += 1) {
                                     const candidate = bun.handleOom(std.fmt.allocPrint(
                                         p.allocator,
@@ -5188,6 +5190,7 @@ pub fn NewParser_(
                 const setter_args = bun.handleOom(p.allocator.alloc(G.Arg, 1));
                 setter_args[0] = .{ .binding = p.b(B.Identifier{ .ref = setter_param_ref }, prop_loc) };
                 const set_body_stmts = bun.handleOom(p.allocator.alloc(Stmt, 1));
+                p.recordUsage(setter_param_ref);
                 set_body_stmts[0] = Stmt.assign(
                     p.newExpr(E.Index{
                         .target = field_target_builder.build(p, is_static_accessor, class, prop_loc),
@@ -5286,7 +5289,24 @@ pub fn NewParser_(
                         // TODO: prop.kind == .declare and prop.value == null
 
                         if (prop.ts_decorators.len > 0) {
-                            const descriptor_key = prop.key.?;
+                            // For computed auto-accessor getters we emit the
+                            // member definition as `get [(_tmp = expr())]()`
+                            // so the user expression runs exactly once during
+                            // the getter's `PropertyName` evaluation (see
+                            // `rewriteAutoAccessorProperties`). The decorator
+                            // descriptor, however, must reference only the
+                            // cached temp — otherwise `__legacyDecorateClassTS`
+                            // would re-run `expr()` at runtime. Unwrap the
+                            // assignment here so the decorator sees just `_tmp`.
+                            const descriptor_key = brk: {
+                                const k = prop.key.?;
+                                if (k.data == .e_binary and k.data.e_binary.op == .bin_assign and
+                                    k.data.e_binary.left.data == .e_identifier)
+                                {
+                                    break :brk k.data.e_binary.left;
+                                }
+                                break :brk k;
+                            };
                             const loc = descriptor_key.loc;
 
                             // Auto-accessor fields never reach this loop directly —

@@ -1,16 +1,4 @@
-// https://github.com/oven-sh/bun/issues/29197
-//
-// The `accessor` class field modifier (TC39 Stage 4 / TypeScript 4.9+) was
-// rejected by Bun's parser whenever `experimentalDecorators: true` was set in
-// `tsconfig.json`, because the parser gated the keyword on Bun's internal
-// `standard_decorators` feature flag. The keyword is valid class syntax
-// regardless of which decorator proposal is active, so parsing it should not
-// depend on that flag.
-//
-// JavaScriptCore also does not currently parse `accessor` natively, so Bun
-// needs to desugar the field to a `#storage` private field plus a `get`/`set`
-// pair — matching what TypeScript emits under `experimentalDecorators: true`
-// — for the code to actually run.
+// https://github.com/oven-sh/bun/issues/29197 (and #27335)
 
 import { expect, test } from "bun:test";
 import { bunEnv, bunExe, tempDir } from "harness";
@@ -38,9 +26,14 @@ async function runTS(
     stderr: "pipe",
   });
 
-  const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
-  // stderr is intentionally not asserted: debug/ASAN builds print startup
-  // warnings, and stdout + exit code already prove the class ran correctly.
+  // Drain stderr concurrently even though we don't assert on it — debug/ASAN
+  // builds emit startup warnings and an unread pipe could backpressure the
+  // child to a stall.
+  const [stdout, _stderr, exitCode] = await Promise.all([
+    proc.stdout.text(),
+    proc.stderr.text(),
+    proc.exited,
+  ]);
   return { stdout, exitCode };
 }
 
@@ -113,10 +106,7 @@ test("static accessor field is accessible through a subclass", async () => {
   expect(exitCode).toBe(0);
 });
 
-// Also covers https://github.com/oven-sh/bun/issues/27335: the same bug
-// surfaced as a plain `public accessor name: string = "John"` class field
-// failing to parse, because the TypeScript `public` modifier leads into
-// the `.p_accessor` branch in `parseProperty` just like a decorator does.
+// https://github.com/oven-sh/bun/issues/27335
 test("TypeScript accessibility modifier before accessor works", async () => {
   const { stdout, exitCode } = await runTS(`
     class Person {
@@ -271,6 +261,30 @@ test("computed-key temp does not clobber user variable of the same name", async 
   `);
 
   expect(stdout).toBe("user:user-value\nf.k=1 calls=1\nf.k=42 calls=1\nuser-after:user-value\n");
+  expect(exitCode).toBe(0);
+});
+
+test("decorated computed-key accessor evaluates the key expression exactly once", async () => {
+  // When a computed accessor has a legacy decorator, the rewrite emits
+  // `get [(_tmp = expr())]() { ... }` for single-eval semantics, but the
+  // decorator descriptor key passed to `__legacyDecorateClassTS(...)` must
+  // be just `_tmp` — otherwise `__legacyDecorateClassTS` would re-run the
+  // user expression when looking up the property descriptor.
+  const { stdout, exitCode } = await runTS(`
+    let calls = 0;
+    const k = () => { calls++; return "dynamic"; };
+    function dec(target: any, key: any, desc: any) {
+      console.log("dec:" + key + ":has-desc:" + (desc != null));
+    }
+    class Foo {
+      @dec accessor [k()] = 42;
+    }
+    const f: any = new Foo();
+    console.log("calls=" + calls);
+    console.log("val=" + f.dynamic);
+  `);
+
+  expect(stdout).toBe("dec:dynamic:has-desc:true\ncalls=1\nval=42\n");
   expect(exitCode).toBe(0);
 });
 
