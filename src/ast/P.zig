@@ -5003,9 +5003,21 @@ pub fn NewParser_(
             // numeric, computed, and private keys while avoiding collisions
             // with adversarial or accidental `#_accessor_storage_0` fields.
             const storage_prefix = "#_accessor_storage_";
-            // Use u64 so the counter can't wrap even for pathological classes
-            // where a user has declared `#_accessor_storage_<very-large>`.
-            var counter: u64 = 0;
+            // Two independent counters — one for backing-field names and one
+            // for computed-key temps — so the storage index sequence stays
+            // contiguous even when a computed-key accessor inserts a temp.
+            // Both are u64 so they can't wrap even for pathological input.
+            //
+            // NOTE: synthesized symbols land on `p.current_scope.generated`,
+            // which at the time the helper runs is the *enclosing* scope
+            // (the class_body scope was popped when `visitClass` returned).
+            // The renamer still assigns unique, non-colliding names to the
+            // synthesized refs, but their slot counters come from the outer
+            // scope rather than the class body. This is a known quality
+            // trade-off; rewriting the helper to run inside the class scope
+            // would require significant refactoring of the visit/lower split.
+            var storage_counter: u64 = 0;
+            var key_counter: u64 = 0;
             for (class.properties) |existing| {
                 if (existing.key) |k| {
                     if (k.data == .e_private_identifier) {
@@ -5013,7 +5025,7 @@ pub fn NewParser_(
                         if (bun.strings.hasPrefixComptime(name, storage_prefix)) {
                             const rest = name[storage_prefix.len..];
                             if (std.fmt.parseInt(u64, rest, 10)) |n| {
-                                if (n < std.math.maxInt(u64) and n + 1 > counter) counter = n + 1;
+                                if (n < std.math.maxInt(u64) and n + 1 > storage_counter) storage_counter = n + 1;
                             } else |_| {}
                         }
                     }
@@ -5028,8 +5040,8 @@ pub fn NewParser_(
 
                 const prop_loc = if (prop.key) |k| k.loc else logger.Loc.Empty;
 
-                const storage_n = counter;
-                counter += 1;
+                const storage_n = storage_counter;
+                storage_counter += 1;
                 const storage_name = bun.handleOom(std.fmt.allocPrint(
                     p.allocator,
                     "#_accessor_storage_{d}",
@@ -5076,12 +5088,12 @@ pub fn NewParser_(
                                 {
                                     const rest = existing_name[tmp_prefix.len .. existing_name.len - 1];
                                     if (std.fmt.parseInt(u64, rest, 10)) |n| {
-                                        if (n < std.math.maxInt(u64) and n + 1 > counter) counter = n + 1;
+                                        if (n < std.math.maxInt(u64) and n + 1 > key_counter) key_counter = n + 1;
                                     } else |_| {}
                                 }
                             }
                             const tmp_name = brk: {
-                                var n: u64 = counter;
+                                var n: u64 = key_counter;
                                 while (true) : (n += 1) {
                                     const candidate = bun.handleOom(std.fmt.allocPrint(
                                         p.allocator,
@@ -5089,7 +5101,7 @@ pub fn NewParser_(
                                         .{n},
                                     ));
                                     if (!hoist_scope.members.contains(candidate)) {
-                                        counter = n + 1;
+                                        key_counter = n + 1;
                                         break :brk candidate;
                                     }
                                 }
@@ -5315,17 +5327,28 @@ pub fn NewParser_(
                             // assignment here so the decorator sees just `_tmp`.
                             const descriptor_key = brk: {
                                 const k = prop.key.?;
+                                // Only unwrap the specific `(__bun_accessor_key_N$ = expr)`
+                                // shape synthesized by `rewriteAutoAccessorProperties` —
+                                // a user-written `@dec get [(x = computeKey())]()` must
+                                // pass through unchanged so the runtime key is correctly
+                                // `computeKey()`, not the bare identifier `x`.
                                 if (k.data == .e_binary and k.data.e_binary.op == .bin_assign and
                                     k.data.e_binary.left.data == .e_identifier)
                                 {
-                                    // This is a third runtime read of the
-                                    // hoisted temp (after the getter's LHS
-                                    // assignment and the setter's RHS read),
-                                    // so bump the use count to keep the
-                                    // minifier's character-frequency table
-                                    // accurate.
-                                    p.recordUsage(k.data.e_binary.left.data.e_identifier.ref);
-                                    break :brk k.data.e_binary.left;
+                                    const lhs_ref = k.data.e_binary.left.data.e_identifier.ref;
+                                    const lhs_name = p.symbols.items[lhs_ref.innerIndex()].original_name;
+                                    if (bun.strings.hasPrefixComptime(lhs_name, "__bun_accessor_key_") and
+                                        bun.strings.hasSuffixComptime(lhs_name, "$"))
+                                    {
+                                        // This is a third runtime read of the
+                                        // hoisted temp (after the getter's LHS
+                                        // assignment and the setter's RHS read),
+                                        // so bump the use count to keep the
+                                        // minifier's character-frequency table
+                                        // accurate.
+                                        p.recordUsage(lhs_ref);
+                                        break :brk k.data.e_binary.left;
+                                    }
                                 }
                                 break :brk k;
                             };

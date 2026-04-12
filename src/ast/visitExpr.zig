@@ -1687,12 +1687,13 @@ pub fn VisitExpr(
                 if (parser_feature__typescript and !p.options.features.standard_decorators) {
                     for (e_.properties) |p2| {
                         if (p2.kind == .auto_accessor and p2.ts_decorators.len > 0) {
+                            // Report *every* offender so the user sees all
+                            // violations in one compile pass.
                             bun.handleOom(p.log.addError(
                                 p.source,
                                 p2.ts_decorators.slice()[0].loc,
                                 "Legacy decorators on `accessor` fields inside a class expression are not yet supported. Move the class to a declaration or drop the decorator.",
                             ));
-                            break;
                         }
                     }
                 }
