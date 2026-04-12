@@ -5060,11 +5060,26 @@ pub fn NewParser_(
                             }
 
                             // Pick a name that isn't already bound in the
-                            // hoisting scope. The `__bun_` prefix keeps us
-                            // out of typical user namespace, and the `$`
-                            // suffix is valid-but-rare in user code, but we
-                            // still loop-and-bump on the off chance a user
-                            // wrote one.
+                            // hoisting scope. We must check both `members`
+                            // (user-declared names) and `generated` (symbols
+                            // we or another synthesizer previously created,
+                            // including temps from a sibling class processed
+                            // earlier in this same file) — otherwise two
+                            // classes at the same scope would both start
+                            // their counters at 0 and produce duplicate
+                            // `var __bun_accessor_key_0$;` declarations.
+                            const tmp_prefix = "__bun_accessor_key_";
+                            for (hoist_scope.generated.slice()) |existing_ref| {
+                                const existing_name = p.symbols.items[existing_ref.innerIndex()].original_name;
+                                if (bun.strings.hasPrefixComptime(existing_name, tmp_prefix) and
+                                    bun.strings.hasSuffixComptime(existing_name, "$"))
+                                {
+                                    const rest = existing_name[tmp_prefix.len .. existing_name.len - 1];
+                                    if (std.fmt.parseInt(u64, rest, 10)) |n| {
+                                        if (n < std.math.maxInt(u64) and n + 1 > counter) counter = n + 1;
+                                    } else |_| {}
+                                }
+                            }
                             const tmp_name = brk: {
                                 var n: u64 = counter;
                                 while (true) : (n += 1) {
@@ -5303,6 +5318,13 @@ pub fn NewParser_(
                                 if (k.data == .e_binary and k.data.e_binary.op == .bin_assign and
                                     k.data.e_binary.left.data == .e_identifier)
                                 {
+                                    // This is a third runtime read of the
+                                    // hoisted temp (after the getter's LHS
+                                    // assignment and the setter's RHS read),
+                                    // so bump the use count to keep the
+                                    // minifier's character-frequency table
+                                    // accurate.
+                                    p.recordUsage(k.data.e_binary.left.data.e_identifier.ref);
                                     break :brk k.data.e_binary.left;
                                 }
                                 break :brk k;
@@ -5409,7 +5431,12 @@ pub fn NewParser_(
                                             }
                                         }
                                     },
-                                    .spread, .declare, .auto_accessor => {}, // not allowed in a class (auto_accessor is standard decorators only)
+                                    // `auto_accessor` properties never reach this loop —
+                                    // `rewriteAutoAccessorProperties` converts them to a
+                                    // getter/setter pair (with `is_method = true`) before
+                                    // the decorator metadata emission runs, so decorated
+                                    // accessors are handled by the `.get` arm above.
+                                    .spread, .declare, .auto_accessor => {},
                                     .class_static_block => {}, // not allowed to decorate this
                                 }
                             }

@@ -3,10 +3,10 @@
 import { expect, test } from "bun:test";
 import { bunEnv, bunExe, tempDir } from "harness";
 
-async function runTS(
+async function runTSFull(
   source: string,
   extraCompilerOptions: Record<string, unknown> = {},
-): Promise<{ stdout: string; exitCode: number | null }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   using dir = tempDir("bun-issue-29197", {
     "tsconfig.json": JSON.stringify({
       compilerOptions: {
@@ -26,10 +26,22 @@ async function runTS(
     stderr: "pipe",
   });
 
-  // Drain stderr concurrently even though we don't assert on it — debug/ASAN
-  // builds emit startup warnings and an unread pipe could backpressure the
-  // child to a stall.
-  const [stdout, _stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  // Drain stderr concurrently even though most tests don't assert on it —
+  // debug/ASAN builds emit startup warnings and an unread pipe could
+  // backpressure the child to a stall.
+  const [stdout, stderr, exitCode] = await Promise.all([
+    proc.stdout.text(),
+    proc.stderr.text(),
+    proc.exited,
+  ]);
+  return { stdout, stderr, exitCode };
+}
+
+async function runTS(
+  source: string,
+  extraCompilerOptions: Record<string, unknown> = {},
+): Promise<{ stdout: string; exitCode: number | null }> {
+  const { stdout, exitCode } = await runTSFull(source, extraCompilerOptions);
   return { stdout, exitCode };
 }
 
@@ -325,4 +337,41 @@ test("decorator metadata: accessor field records its declared type", () => {
   // field, not left as the raw `accessor` keyword (JSC doesn't parse it).
   expect(out).toContain("_accessor_storage");
   expect(out).not.toMatch(/\baccessor\s+str\b/);
+});
+
+test("sibling classes with computed accessor keys use distinct temp vars", async () => {
+  // Two classes at the same hoisting scope each need a computed-key temp.
+  // The counter must not reset to 0 between classes — otherwise both
+  // classes would produce `var __bun_accessor_key_0$;` and the second
+  // class would clobber the first.
+  const { stdout, exitCode } = await runTS(`
+    let calls = 0;
+    const k = () => { calls++; return "k" + calls; };
+    class A { accessor [k()] = 1; }
+    class B { accessor [k()] = 2; }
+    const a: any = new A();
+    const b: any = new B();
+    console.log(a.k1, b.k2, "calls=" + calls);
+  `);
+
+  expect(stdout).toBe("1 2 calls=2\n");
+  expect(exitCode).toBe(0);
+});
+
+test("decorated accessor in a class expression is rejected with a clear error", async () => {
+  // Legacy decorators on any class-expression member are a pre-existing
+  // Bun gap. Until that gap is closed, refuse to silently drop a decorator
+  // on an auto-accessor inside a class expression — users need explicit
+  // feedback, not code that silently ignores their decorator.
+  const { stdout, stderr, exitCode } = await runTSFull(`
+    function dec(_t: any, _k: any, _d: any) {}
+    const C = class {
+      @dec accessor x = 1;
+    };
+    new C();
+  `);
+
+  expect(stdout).toBe("");
+  expect(stderr).toContain("class expression");
+  expect(exitCode).not.toBe(0);
 });
