@@ -4939,7 +4939,7 @@ pub fn NewParser_(
             stmts.append(closure) catch unreachable;
         }
 
-        /// Rewrite each `accessor x = ...` property into a `#x_accessor_storage`
+        /// Rewrite each `accessor x = ...` property into a `#_accessor_storage_N`
         /// private field plus a `get x()` / `set x(v)` pair. This matches what
         /// TypeScript emits under `experimentalDecorators: true` and what Bun's
         /// standard-decorators lowering path does — JavaScriptCore does not
@@ -4955,17 +4955,26 @@ pub fn NewParser_(
         /// Runs POST-visit, so synthesized `G.Fn`s do not need parse-time
         /// scopes — they go directly to the printer.
         ///
-        /// Computed keys (`accessor [expr] = init`) are hoisted into a temp
-        /// `var _computedKey = expr;` prepended to `prefix_stmts`, so the
-        /// key expression is evaluated exactly once even though the rewrite
-        /// expands the property into three class members (field, getter,
-        /// setter). The caller is responsible for emitting the prefix
-        /// statements before the class declaration. If `prefix_stmts` is
-        /// null (e.g. during class-expression lowering where we cannot
-        /// easily emit outer statements), computed-key hoisting is skipped
-        /// and the key is reused — a known-acceptable limitation because
-        /// the keys were already evaluated during visit before reaching
-        /// this helper.
+        /// Computed keys (`accessor [expr] = init`) are expanded into three
+        /// class members (field, getter, setter). Since the getter and setter
+        /// are separate `MethodDefinition`s, each evaluates its `PropertyName`
+        /// independently. To preserve the TC39 guarantee that a computed key
+        /// on an auto-accessor is evaluated exactly once, we rewrite the pair
+        /// as `get [(_tmp = expr())]() { ... }` / `set [_tmp](v) { ... }` and
+        /// prepend a bare `var _tmp;` declaration (no initializer) to
+        /// `prefix_stmts`. This way:
+        ///
+        ///  - `extends` still evaluates before the class body (unchanged).
+        ///  - The assignment `_tmp = expr()` runs in class-element order,
+        ///    inside the getter's PropertyName evaluation, matching spec.
+        ///  - The setter just reads `_tmp`, so the original expression runs
+        ///    exactly once.
+        ///
+        /// If `prefix_stmts` is null (class-expression lowering, where there
+        /// is no statement-level sink), we fall back to reusing `prop.key`
+        /// verbatim on both synthesized members. In that path a computed key
+        /// with side effects will fire twice — a known limitation documented
+        /// as an edge case.
         pub fn rewriteAutoAccessorProperties(
             p: *P,
             class: *G.Class,
@@ -4985,6 +4994,11 @@ pub fn NewParser_(
                 class.properties.len,
             ));
 
+            // Counter for synthesized backing-field names. Always use the
+            // counter form rather than deriving from the key — this avoids
+            // collisions with user-declared private fields (adversarial or
+            // accidental) and keeps the naming strategy uniform for string,
+            // numeric, computed, and private keys.
             var counter: u32 = 0;
             for (class.properties) |prop| {
                 if (prop.kind != .auto_accessor) {
@@ -4994,36 +5008,13 @@ pub fn NewParser_(
 
                 const prop_loc = if (prop.key) |k| k.loc else logger.Loc.Empty;
 
-                // Build a unique private name for the backing storage. For
-                // UTF-8 string keys that are valid JavaScript identifiers we
-                // embed the key name for readability; for anything else
-                // (computed keys, numeric keys, UTF-16 keys, keys with
-                // non-identifier characters like `"foo-bar"` or `"1"`, etc.)
-                // we fall back to a counter so the resulting `#name` is
-                // always a valid private identifier.
-                const storage_name: string = brk: {
-                    if (!prop.flags.contains(.is_computed)) {
-                        if (prop.key) |k| {
-                            if (k.data == .e_string) {
-                                const key_str = k.data.e_string;
-                                if (key_str.isUTF8() and key_str.isIdentifier(p.allocator)) {
-                                    break :brk bun.handleOom(std.fmt.allocPrint(
-                                        p.allocator,
-                                        "#{s}_accessor_storage",
-                                        .{key_str.data},
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    const n = counter;
-                    counter += 1;
-                    break :brk bun.handleOom(std.fmt.allocPrint(
-                        p.allocator,
-                        "#_accessor_storage_{d}",
-                        .{n},
-                    ));
-                };
+                const storage_n = counter;
+                counter += 1;
+                const storage_name = bun.handleOom(std.fmt.allocPrint(
+                    p.allocator,
+                    "#_accessor_storage_{d}",
+                    .{storage_n},
+                ));
 
                 const storage_kind: Symbol.Kind = if (prop.flags.contains(.is_static))
                     .private_static_field
@@ -5032,36 +5023,59 @@ pub fn NewParser_(
                 const storage_ref = bun.handleOom(p.newSymbol(storage_kind, storage_name));
                 bun.handleOom(p.current_scope.generated.append(p.allocator, storage_ref));
 
-                // For computed keys, hoist the key expression into a temp so it
-                // only evaluates once. The same `prop.key` is otherwise reused
-                // by both the getter and setter members below, which would
-                // double-evaluate side effects in the user's key expression.
-                var shared_key = prop.key;
+                // For computed keys, emit an assignment-as-key so the user
+                // expression runs exactly once, inside the class body in
+                // class-element order (see doc comment above).
+                var getter_key = prop.key;
+                var setter_key = prop.key;
                 if (prop.flags.contains(.is_computed)) {
                     if (prefix_stmts) |ps| {
                         if (prop.key) |k| {
-                            const key_ref = bun.handleOom(p.newSymbol(
-                                .other,
-                                bun.handleOom(std.fmt.allocPrint(
-                                    p.allocator,
-                                    "_computedAccessorKey{d}",
-                                    .{counter},
-                                )),
-                            ));
-                            bun.handleOom(p.current_scope.generated.append(p.allocator, key_ref));
+                            const tmp_n = counter;
                             counter += 1;
+                            const tmp_name = bun.handleOom(std.fmt.allocPrint(
+                                p.allocator,
+                                "__bun_accessor_key_{d}$",
+                                .{tmp_n},
+                            ));
+                            const tmp_ref = bun.handleOom(p.newSymbol(.other, tmp_name));
+                            // The temp variable lives at the enclosing
+                            // hoisting scope via a `var` declaration, so
+                            // register it on the nearest such scope.
+                            var hoist_scope = p.current_scope;
+                            while (!hoist_scope.kindStopsHoisting()) {
+                                hoist_scope = hoist_scope.parent.?;
+                            }
+                            bun.handleOom(hoist_scope.generated.append(p.allocator, tmp_ref));
+                            bun.handleOom(p.declared_symbols.append(p.allocator, .{
+                                .ref = tmp_ref,
+                                .is_top_level = hoist_scope == p.module_scope,
+                            }));
 
+                            // Emit `var __bun_accessor_key_N$;` (no initializer)
+                            // before the class declaration — the actual
+                            // assignment fires inside the class body below.
                             const decls = bun.handleOom(p.allocator.alloc(G.Decl, 1));
                             decls[0] = .{
-                                .binding = p.b(B.Identifier{ .ref = key_ref }, k.loc),
-                                .value = k,
+                                .binding = p.b(B.Identifier{ .ref = tmp_ref }, k.loc),
                             };
                             bun.handleOom(ps.append(p.s(
                                 S.Local{ .kind = .k_var, .decls = G.Decl.List.fromOwnedSlice(decls) },
                                 k.loc,
                             )));
 
-                            shared_key = p.newExpr(E.Identifier{ .ref = key_ref }, k.loc);
+                            // Getter key: `(_tmp = expr())`. Runs in
+                            // class-element order as the getter's PropertyName
+                            // is evaluated.
+                            p.recordUsage(tmp_ref);
+                            getter_key = Expr.assign(
+                                p.newExpr(E.Identifier{ .ref = tmp_ref }, k.loc),
+                                k,
+                            );
+                            // Setter key: just `_tmp`, which now holds
+                            // the value computed above.
+                            p.recordUsage(tmp_ref);
+                            setter_key = p.newExpr(E.Identifier{ .ref = tmp_ref }, k.loc);
                         }
                     }
                 }
@@ -5130,7 +5144,7 @@ pub fn NewParser_(
                 bun.handleOom(rewritten.append(.{
                     .kind = .get,
                     .flags = method_flags,
-                    .key = shared_key,
+                    .key = getter_key,
                     .value = get_fn_expr,
                     .ts_decorators = prop.ts_decorators,
                     .ts_metadata = prop.ts_metadata,
@@ -5157,7 +5171,7 @@ pub fn NewParser_(
                 bun.handleOom(rewritten.append(.{
                     .kind = .set,
                     .flags = method_flags,
-                    .key = shared_key,
+                    .key = setter_key,
                     .value = set_fn_expr,
                 }));
             }
