@@ -29,11 +29,7 @@ async function runTSFull(
   // Drain stderr concurrently even though most tests don't assert on it —
   // debug/ASAN builds emit startup warnings and an unread pipe could
   // backpressure the child to a stall.
-  const [stdout, stderr, exitCode] = await Promise.all([
-    proc.stdout.text(),
-    proc.stderr.text(),
-    proc.exited,
-  ]);
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   return { stdout, stderr, exitCode };
 }
 
