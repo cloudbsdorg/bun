@@ -5327,6 +5327,15 @@ pub fn NewParser_(
                             // assignment here so the decorator sees just `_tmp`.
                             const descriptor_key = brk: {
                                 const k = prop.key.?;
+                                // Private-identifier keys (`@dec accessor #x`)
+                                // can't be printed in expression context, so
+                                // `__legacyDecorateClassTS` must receive the
+                                // private name as a string literal. Matches
+                                // TypeScript: `__decorate([dec], C.prototype, "#x", null)`.
+                                if (k.data == .e_private_identifier) {
+                                    const name = p.symbols.items[k.data.e_private_identifier.ref.innerIndex()].original_name;
+                                    break :brk p.newExpr(E.String{ .data = name }, k.loc);
+                                }
                                 // Only unwrap the specific `(__bun_accessor_key_N$ = expr)`
                                 // shape synthesized by `rewriteAutoAccessorProperties` —
                                 // a user-written `@dec get [(x = computeKey())]()` must

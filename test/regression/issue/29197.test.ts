@@ -354,6 +354,26 @@ test("sibling classes with computed accessor keys use distinct temp vars", async
   expect(exitCode).toBe(0);
 });
 
+test("decorator on a private accessor field is rejected like TypeScript", async () => {
+  // TypeScript emits `TS1206: Decorators are not valid here` for
+  // `@dec accessor #x` under `experimentalDecorators`. Bun's parser
+  // rejects it at the private-identifier property branch too (the
+  // legacy-decorator model doesn't support decorating private class
+  // members directly). This test locks in the rejection so a future
+  // relaxation doesn't accidentally land a half-implemented lowering.
+  const { stdout, stderr, exitCode } = await runTSFull(`
+    function dec(target: any, key: any, desc: any) {}
+    class Foo {
+      @dec accessor #x = 5;
+    }
+    new Foo();
+  `);
+
+  expect(stdout).toBe("");
+  expect(stderr).toContain("#x");
+  expect(exitCode).not.toBe(0);
+});
+
 test("decorated accessor in a class expression is rejected with a clear error", async () => {
   // Legacy decorators on any class-expression member are a pre-existing
   // Bun gap. Until that gap is closed, refuse to silently drop a decorator
