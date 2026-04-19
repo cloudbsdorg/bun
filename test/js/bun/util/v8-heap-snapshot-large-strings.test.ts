@@ -148,5 +148,4 @@ test.skipIf(isDebug || isASAN)(
     expect(longest).toBeLessThanOrEqual(1024);
     expect(exitCode).toBe(0);
   },
-  120_000,
 );

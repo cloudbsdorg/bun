@@ -8,19 +8,23 @@ import { bunEnv, bunExe, normalizeBunSnapshot } from "harness";
 const env = { ...bunEnv, BUN_FEATURE_FLAG_DISABLE_MEMFD: "1" };
 
 test.skipIf(process.platform !== "linux")("Bun.spawn stdin from Blob falls back when memfd is disabled", async () => {
-  const payload = Buffer.alloc(64 * 1024, "x").toString();
+  // Build the 64 KiB payload inside the subprocess — embedding it twice in the
+  // -e argument (once for the Blob, once for the comparison) pushed argv+envp
+  // past ARG_MAX on CI hosts with large environments and tripped E2BIG.
+  const payloadLength = 64 * 1024;
   await using proc = Bun.spawn({
     cmd: [
       bunExe(),
       "-e",
       `
+        const payload = Buffer.alloc(${payloadLength}, "x").toString();
         const proc = Bun.spawn({
           cmd: [process.execPath, "-e", "process.stdin.pipe(process.stdout)"],
-          stdin: new Blob([${JSON.stringify(payload)}]),
+          stdin: new Blob([payload]),
           stdout: "pipe",
         });
         const out = await proc.stdout.text();
-        console.log(out.length, out === ${JSON.stringify(payload)});
+        console.log(out.length, out === payload);
         process.exit(await proc.exited);
       `,
     ],
@@ -30,7 +34,7 @@ test.skipIf(process.platform !== "linux")("Bun.spawn stdin from Blob falls back 
   });
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   expect(stderr).toBe("");
-  expect(normalizeBunSnapshot(stdout)).toBe(`${payload.length} true`);
+  expect(normalizeBunSnapshot(stdout)).toBe(`${payloadLength} true`);
   expect(exitCode).toBe(0);
 });
 
