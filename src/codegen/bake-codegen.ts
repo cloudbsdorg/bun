@@ -1,7 +1,10 @@
-import assert from "node:assert";
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { argParse, writeIfNotChanged } from "./helpers";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // arg parsing
 let { "codegen-root": codegenRoot, debug, ...rest } = argParse(["codegen-root", "debug"]);
@@ -11,7 +14,7 @@ if (!codegenRoot) {
   process.exit(1);
 }
 
-const base_dir = join(import.meta.dirname, "../bake");
+const base_dir = join(__dirname, "../bake");
 
 function convertZigEnum(zig: string, names: string[]) {
   let output = "/** Generated from DevServer.zig */\n";
@@ -30,16 +33,56 @@ function convertZigEnum(zig: string, names: string[]) {
 }
 
 async function css(file: string, is_development: boolean): Promise<string> {
-  const esbuild = join(import.meta.dirname, "../../node_modules/.bin/esbuild");
-  const proc = Bun.spawn({
-    cmd: [esbuild, file, "--minify"],
-    cwd: import.meta.dir,
-    stdio: ["ignore", "pipe", "pipe"],
+  const esbuild = join(__dirname, "../../node_modules/.bin/esbuild");
+  const result = spawnSync(esbuild, [file, "--minify"], {
+    cwd: __dirname,
+    encoding: "utf-8",
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  if ((await proc.exited) !== 0) throw new Error(stderr);
-  return stdout;
+  if (result.status !== 0) throw new Error(result.stderr);
+  return result.stdout;
+}
+
+async function bundle(options: any) {
+  const esbuild = join(__dirname, "../../node_modules/.bin/esbuild");
+  const args = [
+    options.entrypoints[0],
+    "--bundle",
+    "--format=esm",
+    "--target=esnext",
+  ];
+
+  if (options.minify) {
+    if (typeof options.minify === "object") {
+      if (options.minify.syntax) args.push("--minify-syntax");
+    } else {
+      args.push("--minify");
+    }
+  }
+
+  if (options.define) {
+    for (const [key, value] of Object.entries(options.define)) {
+      args.push(`--define:${key}=${value}`);
+    }
+  }
+
+  if (options.drop) {
+    for (const drop of options.drop) {
+      args.push(`--drop:${drop.toLowerCase()}`);
+    }
+  }
+
+  const result = spawnSync(esbuild, args, { encoding: "utf-8" });
+  if (result.status !== 0) {
+    return { success: false, logs: [result.stderr] };
+  }
+  return {
+    success: true,
+    outputs: [
+      {
+        text: async () => result.stdout,
+      },
+    ],
+  };
 }
 
 async function run() {
@@ -49,13 +92,13 @@ async function run() {
   const results = await Promise.allSettled(
     ["client", "server", "error"].map(async file => {
       const side = file === "error" ? "client" : file;
-      let result = await Bun.build({
+      let result = await bundle({
         entrypoints: [join(base_dir, `hmr-runtime-${file}.ts`)],
         define: {
           side: JSON.stringify(side),
           IS_ERROR_RUNTIME: String(file === "error"),
           IS_BUN_DEVELOPMENT: String(!!debug),
-          OVERLAY_CSS: await css(join(base_dir, "../bake/client/overlay.css"), !!debug),
+          OVERLAY_CSS: JSON.stringify(await css(join(base_dir, "../bake/client/overlay.css"), !!debug)),
         },
         minify: {
           syntax: !debug,
@@ -64,8 +107,7 @@ async function run() {
         drop: debug ? [] : ["ASSERT", "DEBUG"],
         conditions: [side],
       });
-      if (!result.success) throw new AggregateError(result.logs);
-      assert(result.outputs.length === 1, "must bundle to a single file");
+      if (!result.success) throw new Error(result.logs.join("\n"));
       // @ts-ignore
       let code = await result.outputs[0].text();
 
@@ -91,14 +133,14 @@ async function run() {
 
       writeIfNotChanged(generated_entrypoint, combined_source);
 
-      result = await Bun.build({
+      result = await bundle({
         entrypoints: [generated_entrypoint],
         minify: !debug,
         drop: debug ? [] : ["DEBUG"],
         target: side === "server" ? "bun" : "browser",
       });
-      if (!result.success) throw new AggregateError(result.logs);
-      assert(result.outputs.length === 1, "must bundle to a single file");
+      if (!result.success) throw new Error(result.logs.join("\n"));
+      // @ts-ignore
       code = (await result.outputs[0].text()).replace(`// ${basename(generated_entrypoint)}`, "").trim();
 
       rmSync(generated_entrypoint);

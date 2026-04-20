@@ -524,7 +524,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     fuzzilli,
     ci,
     buildkite,
-    webkit: partial.webkit ?? "prebuilt",
+    webkit: partial.webkit ?? (freebsd ? "local" : "prebuilt"),
     cwd,
     buildDir,
     codegenDir,

@@ -2903,6 +2903,9 @@ pub fn getFdPath(fd: bun.FD, out_buffer: *bun.PathBuffer) Maybe([]u8) {
                 },
             };
         },
+        .freebsd => {
+            return getFdPathFreeBSDLinuxulator(fd, out_buffer);
+        },
         .wasm => @compileError("querying for canonical path of a handle is unsupported on this host"),
     }
 }

@@ -17,13 +17,37 @@
 // single JSC::SourceProvider and pass start/end positions to each function's
 // JSC::SourceCode. JSC does this, but WebCore does not seem to.
 import assert from "assert";
-import { readdirSync, rmSync } from "fs";
+import { readdirSync, rmSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { sliceSourceCode } from "./builtin-parser";
 import { createAssertClientJS, createLogClientJS } from "./client-js";
 import { getJS2NativeDTS } from "./generate-js2native";
 import { addCPPCharArray, cap, low, writeIfNotChanged } from "./helpers";
 import { applyGlobalReplacements, define } from "./replacements";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const Bun = {
+  file: (p: string) => ({
+    text: async () => readFileSync(p, "utf-8"),
+  }),
+  env: process.env,
+  spawn: (options: any) => {
+    const res = spawnSync(options.cmd[0], options.cmd.slice(1), {
+      cwd: options.cwd,
+      env: options.env || process.env,
+      encoding: "utf-8",
+    });
+    return {
+      exited: Promise.resolve(res.status),
+      stdout: res.stdout,
+      stderr: res.stderr,
+      exitCode: res.status,
+    };
+  },
+};
 
 const PARALLEL = false;
 const KEEP_TMP = true;
@@ -37,7 +61,7 @@ if (!CMAKE_BUILD_ROOT) {
   throw new Error("CMAKE_BUILD_ROOT is not defined");
 }
 
-const SRC_DIR = path.join(import.meta.dir, "../js/builtins");
+const SRC_DIR = path.join(__dirname, "../js/builtins");
 const CODEGEN_DIR = path.join(CMAKE_BUILD_ROOT, "./codegen");
 const TMP_DIR = path.join(CMAKE_BUILD_ROOT, "./tmp_functions");
 

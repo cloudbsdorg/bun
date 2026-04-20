@@ -102,7 +102,7 @@ export function registerCodegenRules(n: Ninja, cfg: Config): void {
   // a linux box for darwin/windows; these rules run on the linux box.
   const hostWin = cfg.host.os === "windows";
   const q = (p: string) => quote(p, hostWin);
-  const bun = q(cfg.bun);
+  const bun = cfg.freebsd ? "/tmp/bun-node-wrapper" : q(cfg.bun);
   const esbuild = q(cfg.esbuild);
 
   // Generic codegen: `cd <repo-root> && [env VARS] bun <args>`.
@@ -140,9 +140,11 @@ export function registerCodegenRules(n: Ninja, cfg: Config): void {
   // version bumps actually reinstall.
   const touch = hostWin ? "type nul >" : "touch";
   n.rule("bun_install", {
-    command: hostWin
-      ? `cmd /c "cd /d $dir && ${bun} install --frozen-lockfile && ${touch} $stamp"`
-      : `cd $dir && ${bun} install --frozen-lockfile && ${touch} $stamp`,
+    command: cfg.freebsd
+      ? `cd $dir && ${touch} $stamp`
+      : hostWin
+        ? `cmd /c "cd /d $dir && ${bun} install --frozen-lockfile && ${touch} $stamp"`
+        : `cd $dir && ${bun} install --frozen-lockfile && ${touch} $stamp`,
     description: "install $dir",
     restat: true,
     // bun install can be memory-hungry and grabs a lockfile; serialize.

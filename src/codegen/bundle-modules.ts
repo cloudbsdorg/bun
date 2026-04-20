@@ -12,6 +12,8 @@ import fs from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { builtinModules } from "node:module";
 import path from "path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import jsclasses from "./../bun.js/bindings/js_classes";
 import { sliceSourceCode } from "./builtin-parser";
 import { createAssertClientJS, createLogClientJS } from "./client-js";
@@ -20,7 +22,8 @@ import { cap, declareASCIILiteral, writeIfNotChanged } from "./helpers";
 import { createInternalModuleRegistry } from "./internal-module-registry-scanner";
 import { define } from "./replacements";
 
-const BASE = path.join(import.meta.dir, "../js");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BASE = path.join(__dirname, "../js");
 const debug = process.argv[2] === "--debug=ON";
 const CMAKE_BUILD_ROOT = process.argv[3];
 
@@ -39,7 +42,27 @@ const TMP_DIR = path.join(CMAKE_BUILD_ROOT, "tmp_modules");
 const CODEGEN_DIR = path.join(CMAKE_BUILD_ROOT, "codegen");
 const JS_DIR = path.join(CMAKE_BUILD_ROOT, "js");
 
-const t = new Bun.Transpiler({ loader: "tsx" });
+const t = {
+  scan: (input: string) => {
+    const exports: string[] = [];
+    if (/\bexport\s+default\b/.test(input)) exports.push("default");
+    const m = input.match(/\bexport\s+(?:function|class|const|let|var)\s+([a-zA-Z0-9_$]+)/g);
+    if (m) {
+      for (const match of m) {
+        const name = match.split(/\s+/).pop();
+        if (name) exports.push(name);
+      }
+    }
+    return {
+      imports: [],
+      exports,
+    };
+  },
+};
+const Bun = {
+  env: process.env,
+  sleep: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+};
 
 let start = performance.now();
 const silent = process.env.BUN_SILENT === "1" || process.env.CLAUDECODE;
@@ -59,7 +82,7 @@ globalThis.requireTransformer = requireTransformer;
 // work, so i have lot of debug logs that blow up the console because not sure what is going on.
 // that is also the reason for using `retry` when theoretically writing a file the first time
 // should actually write the file.
-const verbose = Bun.env.VERBOSE ? console.log : () => {};
+const verbose = Bun.env.VERBOSE ? console.log : (...args: any[]) => {};
 async function retry(n, fn) {
   var err;
   while (n > 0) {
@@ -200,15 +223,20 @@ ${processed.result.slice(1).trim()}
 mark("Preprocess modules");
 
 // directory caching stuff breaks this sometimes. CLI rules
+const esbuild = path.join(__dirname, "../../node_modules/.bin/esbuild");
 const config_cli = [
-  process.execPath,
-  "build",
+  esbuild,
   ...bundledEntryPoints,
-  ...(debug ? [] : ["--minify-syntax", "--keep-names"]),
-  "--root",
-  TMP_DIR,
-  "--target",
-  "bun",
+  "--bundle",
+  "--target=esnext",
+  "--format=esm",
+  ...(debug ? [] : ["--minify-syntax"]),
+  "--platform=node",
+  "--outfile=" + path.join(CODEGEN_DIR, "WebCoreJSBuiltins.js"), // dummy outfile
+];
+// wait, bun build has different args than esbuild.
+// bundle-modules expects bun build to output things to the console?
+// actually it uses --outfile.
   ...builtinModules.map(x => ["--external", x]).flat(),
   ...Object.keys(define)
     .map(x => [`--define`, `${x}=${define[x]}`])
@@ -221,15 +249,14 @@ const config_cli = [
   path.join(TMP_DIR, "modules_out"),
 ];
 verbose("running: ", config_cli);
-const proc = Bun.spawn({
-  cmd: config_cli,
+const proc = spawnSync(config_cli[0], config_cli.slice(1), {
   cwd: process.cwd(),
   env: process.env,
-  stdio: ["pipe", "pipe", "pipe"],
+  encoding: "utf-8",
 });
-if ((await proc.exited) !== 0) {
-  console.error(await new Response(proc.stderr).text());
-  process.exit(proc.exitCode ?? 1);
+if (proc.status !== 0) {
+  console.error(proc.stderr);
+  process.exit(proc.status ?? 1);
 }
 
 mark("Bundle modules");
@@ -238,8 +265,7 @@ const outputs = new Map();
 
 for (const entrypoint of bundledEntryPoints) {
   const file_path = entrypoint.slice(TMP_DIR.length + 1).replace(/\.ts$/, ".js");
-  const file = Bun.file(path.join(TMP_DIR, "modules_out", file_path));
-  const output = await file.text();
+  const output = fs.readFileSync(path.join(TMP_DIR, "modules_out", file_path), "utf-8");
   let captured = `(function (){${output.replace("// @bun\n", "").trim()}})`;
   let usesDebug = output.includes("$debug_log");
   let usesAssert = output.includes("$assert");

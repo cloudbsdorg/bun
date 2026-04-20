@@ -59,7 +59,8 @@ export function readdirRecursive(root: string): string[] {
 
 export function resolveSyncOrNull(specifier: string, from: string) {
   try {
-    return Bun.resolveSync(specifier, from);
+    if (typeof Bun !== "undefined") return Bun.resolveSync(specifier, from);
+    return require.resolve(specifier, { paths: [from] });
   } catch {
     return null;
   }
