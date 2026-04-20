@@ -31,13 +31,13 @@ serve({
 ---
 
 <Note>
-  **Linux only** &mdash; Windows and macOS ignore the `reusePort` option. This is an operating system limitation with
+  **Linux and FreeBSD only** &mdash; Windows and macOS ignore the `reusePort` option. This is an operating system limitation with
   `SO_REUSEPORT`, unfortunately.
 </Note>
 
 After saving the file, start your servers on the same port.
 
-Under the hood, this uses the Linux `SO_REUSEPORT` and `SO_REUSEADDR` socket options to ensure fair load balancing across multiple processes. [Learn more about `SO_REUSEPORT` and `SO_REUSEADDR`](https://lwn.net/Articles/542629/)
+Under the hood, this uses the `SO_REUSEPORT` and `SO_REUSEADDR` socket options to ensure fair load balancing across multiple processes. [Learn more about `SO_REUSEPORT` and `SO_REUSEADDR`](https://lwn.net/Articles/542629/)
 
 ```ts cluster.ts icon="/icons/typescript.svg"
 import { spawn } from "bun";

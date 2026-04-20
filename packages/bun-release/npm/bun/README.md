@@ -25,8 +25,9 @@ bun upgrade
 - [Windows, x64](https://www.npmjs.com/package/@oven/bun-windows-x64)
 - [Windows, x64 (without AVX2 instructions)](https://www.npmjs.com/package/@oven/bun-windows-x64-baseline)
 - [Windows ARM64](https://www.npmjs.com/package/@oven/bun-windows-aarch64)
+- [FreeBSD, x64](https://www.npmjs.com/package/@oven/bun-freebsd-x64)
 
 ### Future Platforms
 
-- Unix-like variants such as FreeBSD, OpenBSD, etc.
+- Unix-like variants such as OpenBSD, etc.
 - Android and iOS

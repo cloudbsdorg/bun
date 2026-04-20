@@ -5,7 +5,7 @@
 /// Bun.cron.remove(title)            - remove an OS-level job (returns Promise)
 /// Bun.cron.parse(expr, from?)       - next-occurrence calculator (returns Date | null)
 ///
-/// OS-level uses crontab (Linux), launchctl + launchd plist (macOS), or
+/// OS-level uses crontab (Linux, FreeBSD), launchctl + launchd plist (macOS), or
 /// schtasks (Windows). Async, event-loop-integrated via bun.spawn.
 /// Shared base for CronRegisterJob and CronRemoveJob.
 fn CronJobBase(comptime Self: type) type {
@@ -198,7 +198,7 @@ pub const CronRegisterJob = struct {
         spawnCmdGeneric(CronRegisterJob, this, argv, stdin_opt, stdout_opt);
     }
 
-    // -- Linux --
+    // -- Linux/FreeBSD --
 
     fn startLinux(this: *CronRegisterJob) void {
         this.state = .reading_crontab;

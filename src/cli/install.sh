@@ -67,6 +67,12 @@ case $platform in
 'Darwin arm64')
     target=darwin-aarch64
     ;;
+'FreeBSD amd64')
+    target=freebsd-x64
+    ;;
+'FreeBSD aarch64' | 'FreeBSD arm64')
+    target=freebsd-aarch64
+    ;;
 'Linux aarch64' | 'Linux arm64')
     target=linux-aarch64
     ;;

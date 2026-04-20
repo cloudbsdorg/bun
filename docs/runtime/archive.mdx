@@ -140,7 +140,7 @@ console.log(`Extracted ${count} entries`);
 
 The target directory is created automatically if it doesn't exist. Existing files are overwritten. The returned count includes files, directories, and symlinks (on POSIX systems).
 
-**Note**: On Windows, symbolic links in archives are always skipped during extraction. Bun does not attempt to create them regardless of privilege level. On Linux and macOS, symlinks are extracted normally.
+**Note**: On Windows, symbolic links in archives are always skipped during extraction. Bun does not attempt to create them regardless of privilege level. On Linux, macOS, and FreeBSD, symlinks are extracted normally.
 
 **Security note**: Bun.Archive validates paths during extraction, rejecting absolute paths (POSIX `/`, Windows drive letters like `C:\` or `C:/`, and UNC paths like `\\server\share`). Path traversal components (`..`) are normalized away (e.g., `dir/sub/../file` becomes `dir/file`) to prevent directory escape attacks.
 

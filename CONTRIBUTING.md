@@ -42,6 +42,10 @@ $ sudo dnf install cargo clang21 llvm21 lld21 cmake git golang libtool ninja-bui
 $ sudo zypper install go cmake ninja automake git icu rustup && rustup toolchain install stable
 ```
 
+```bash#FreeBSD
+$ sudo pkg install bash cmake git go gsed icu libiconv libtool ninja pkgconf rust ruby llvm21
+```
+
 {% /codetabs %}
 
 > **Note**: The Zig compiler is automatically installed and updated by the build scripts. Manual installation is not required.
@@ -84,6 +88,9 @@ $ sudo dnf install ccache
 
 # For openSUSE
 $ sudo zypper install ccache
+
+# For FreeBSD
+$ sudo pkg install ccache
 ```
 
 Our build scripts will automatically detect and use `ccache` if available. You can check cache statistics with `ccache --show-stats`.
@@ -109,6 +116,10 @@ $ sudo pacman -S llvm clang lld
 
 ```bash#Fedora
 $ sudo dnf install llvm clang lld-devel
+```
+
+```bash#FreeBSD
+$ sudo pkg install llvm21
 ```
 
 ```bash#openSUSE Tumbleweed
@@ -252,7 +263,7 @@ All of these accept a target: `#1234` (PR number), a PR URL, a branch name, or a
 
 ## AddressSanitizer
 
-[AddressSanitizer](https://en.wikipedia.org/wiki/AddressSanitizer) helps find memory issues, and is enabled by default in debug builds of Bun on Linux and macOS. This includes the Zig code and all dependencies. It makes the Zig code take about 2x longer to build, if that's stopping you from being productive you can disable it with `bun run build:debug:noasan` (or pass `--asan=off` to `scripts/build.ts`), but generally we recommend batching your changes up between builds.
+[AddressSanitizer](https://en.wikipedia.org/wiki/AddressSanitizer) helps find memory issues, and is enabled by default in debug builds of Bun on Linux, macOS, and FreeBSD. This includes the Zig code and all dependencies. It makes the Zig code take about 2x longer to build, if that's stopping you from being productive you can disable it with `bun run build:debug:noasan` (or pass `--asan=off` to `scripts/build.ts`), but generally we recommend batching your changes up between builds.
 
 To build a release build with Address Sanitizer, run:
 

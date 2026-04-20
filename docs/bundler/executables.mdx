@@ -224,6 +224,27 @@ To build for macOS x64:
   </Tab>
 </Tabs>
 
+To build for FreeBSD x64:
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash icon="terminal" terminal
+    bun build --compile --target=bun-freebsd-x64 ./path/to/my/app.ts --outfile myapp
+    ```
+  </Tab>
+  <Tab title="JavaScript">
+    ```ts build.ts icon="/icons/typescript.svg"
+    await Bun.build({
+      entrypoints: ["./path/to/my/app.ts"],
+      compile: {
+        target: "bun-freebsd-x64",
+        outfile: "./myapp",
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
 ### Supported targets
 
 The order of the `--target` flag does not matter, as long as they're delimited by a `-`.
@@ -238,6 +259,8 @@ The order of the `--target` flag does not matter, as long as they're delimited b
 | bun-darwin-arm64     | macOS            | arm64        | ✅     | N/A      | -     |
 | bun-linux-x64-musl   | Linux            | x64          | ✅     | ✅       | musl  |
 | bun-linux-arm64-musl | Linux            | arm64        | ✅     | N/A      | musl  |
+| bun-freebsd-x64      | FreeBSD          | x64          | ✅     | ✅       | -     |
+| bun-freebsd-arm64    | FreeBSD          | arm64        | ✅     | N/A      | -     |
 
 <Warning>
   On x64 platforms, Bun uses SIMD optimizations which require a modern CPU supporting AVX2 instructions. The `-baseline`

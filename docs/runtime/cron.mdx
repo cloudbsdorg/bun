@@ -358,7 +358,7 @@ On headless servers and CI environments where the current user's [Security Ident
   task](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-triggers-tasktype-element) (the
   `CalendarTrigger` element has
   [`maxOccurs="48"`](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-calendartrigger-triggergroup-element)).
-  Some cron expressions that work on Linux and macOS exceed this limit on Windows. When a pattern exceeds the limit,
+  Some cron expressions that work on Linux, macOS, and FreeBSD exceed this limit on Windows. When a pattern exceeds the limit,
   `Bun.cron()` rejects it with an error message.
 </Warning>
 
@@ -372,7 +372,7 @@ On headless servers and CI environments where the current user's [Security Ident
 | `0,30 9-17 * * *`                          | 2 minutes × 9 hours                                                                                                                                        | 18    |
 | `@daily`, `@weekly`, `@monthly`, `@yearly` | Single trigger                                                                                                                                             | 1     |
 
-**Expressions that fail on Windows** (but work on Linux and macOS):
+**Expressions that fail on Windows** (but work on Linux, macOS, and FreeBSD):
 
 | Pattern           | Why                                           | Trigger count |
 | ----------------- | --------------------------------------------- | ------------- |
@@ -440,7 +440,7 @@ This reverses what `Bun.cron()` did:
 
 | Platform | What `remove()` does                                     |
 | -------- | -------------------------------------------------------- |
-| Linux    | Edits crontab to remove the entry and its marker comment |
+| Linux/FreeBSD | Edits crontab to remove the entry and its marker comment |
 | macOS    | Runs `launchctl bootout` and deletes the plist file      |
 | Windows  | Runs `schtasks /delete` to remove the scheduled task     |
 
