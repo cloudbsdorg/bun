@@ -40,6 +40,7 @@ pub fn cpus(global: *jsc.JSGlobalObject) bun.JSError!jsc.JSValue {
     const cpusImpl = switch (Environment.os) {
         .linux => cpusImplLinux,
         .mac => cpusImplDarwin,
+        .freebsd => cpusImplFreeBSD,
         .windows => cpusImplWindows,
         .wasm => @compileError("Unsupported OS"),
     };
@@ -453,7 +454,7 @@ pub fn loadavg(global: *jsc.JSGlobalObject) bun.JSError!jsc.JSValue {
 }
 
 pub const networkInterfaces = switch (Environment.os) {
-    .linux, .mac => networkInterfacesPosix,
+    .linux, .mac, .freebsd => networkInterfacesPosix,
     .windows => networkInterfacesWindows,
     .wasm => @compileError("Unsupported OS"),
 };
@@ -758,7 +759,7 @@ pub fn release() bun.String {
     var name_buffer: [bun.HOST_NAME_MAX]u8 = undefined;
 
     const value = switch (Environment.os) {
-        .linux => slice: {
+        .linux, .freebsd => slice: {
             const uts = std.posix.uname();
             const result = bun.sliceTo(&uts.release, 0);
             bun.copy(u8, &name_buffer, result);
@@ -904,7 +905,7 @@ pub fn uptime(global: *jsc.JSGlobalObject) bun.JSError!f64 {
             }
             return uptime_value;
         },
-        .mac => {
+        .mac, .freebsd => {
             var boot_time: std.posix.timeval = undefined;
             var size: usize = @sizeOf(@TypeOf(boot_time));
 
@@ -961,7 +962,7 @@ pub fn version() bun.JSError!bun.String {
     var name_buffer: [bun.HOST_NAME_MAX]u8 = undefined;
 
     const slice: []const u8 = switch (Environment.os) {
-        .mac => slice: {
+        .mac, .freebsd => slice: {
             @memset(&name_buffer, 0);
 
             var size: usize = name_buffer.len;
@@ -1022,6 +1023,63 @@ const bun = @import("bun");
 const Environment = bun.Environment;
 const c = bun.c;
 const jsc = bun.jsc;
+fn cpusImplFreeBSD(globalThis: *jsc.JSGlobalObject) !jsc.JSValue {
+    var num_cpus: i32 = 0;
+    var size: usize = @sizeOf(i32);
+    if (std.c.sysctlbyname("hw.ncpu", &num_cpus, &size, null, 0) != 0) {
+        num_cpus = 1;
+    }
+
+    var model_name_buf: [512]u8 = undefined;
+    size = model_name_buf.len;
+    if (std.c.sysctlbyname("hw.model", &model_name_buf, &size, null, 0) != 0) {
+        @memcpy(model_name_buf[0..7], "unknown");
+        size = 7;
+    }
+    const model_name = jsc.ZigString.init(model_name_buf[0..bun.sliceTo(&model_name_buf, 0).len]).withEncoding().toJS(globalThis);
+
+    var cpuspeed: u32 = 0;
+    size = @sizeOf(u32);
+    _ = std.c.sysctlbyname("hw.clockrate", &cpuspeed, &size, null, 0);
+
+    var maxcpus: i32 = 0;
+    size = @sizeOf(i32);
+    if (std.c.sysctlbyname("kern.smp.maxcpus", &maxcpus, &size, null, 0) != 0) {
+        maxcpus = num_cpus;
+    }
+
+    const ticks = @as(u64, @intCast(bun_sysconf__SC_CLK_TCK()));
+    const multiplier = 1000 / ticks;
+
+    var cp_times = try bun.default_allocator.alloc(usize, @intCast(maxcpus * 5));
+    defer bun.default_allocator.free(cp_times);
+    size = cp_times.len * @sizeOf(usize);
+    if (std.c.sysctlbyname("kern.cp_times", cp_times.ptr, &size, null, 0) != 0) {
+        @memset(cp_times, 0);
+    }
+
+    const values = try jsc.JSValue.createEmptyArray(globalThis, @intCast(num_cpus));
+    for (0..@intCast(num_cpus)) |i| {
+        const cpu = jsc.JSValue.createEmptyObject(globalThis, 3);
+        cpu.put(globalThis, jsc.ZigString.static("model"), model_name);
+        cpu.put(globalThis, jsc.ZigString.static("speed"), jsc.JSValue.jsNumber(cpuspeed));
+
+        var times = CPUTimes{};
+        const offset = i * 5;
+        if (cp_times.len >= offset + 5) {
+            times.user = cp_times[offset + 0] * multiplier;
+            times.nice = cp_times[offset + 1] * multiplier;
+            times.sys = cp_times[offset + 2] * multiplier;
+            times.irq = cp_times[offset + 3] * multiplier;
+            times.idle = cp_times[offset + 4] * multiplier;
+        }
+        cpu.put(globalThis, jsc.ZigString.static("times"), times.toValue(globalThis));
+
+        try values.putIndex(globalThis, @intCast(i), cpu);
+    }
+    return values;
+}
+
 const strings = bun.strings;
 const sys = bun.sys;
 const gen = bun.gen.node_os;

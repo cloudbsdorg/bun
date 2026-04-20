@@ -1,6 +1,6 @@
 #include "root.h"
 
-#if OS(LINUX) || OS(DARWIN)
+#if OS(LINUX) || OS(DARWIN) || OS(FREEBSD)
 
 #include <fcntl.h>
 #include <cstring>
@@ -33,7 +33,7 @@ static inline int getMaxFd(int start, int end)
 {
 #if OS(LINUX)
     int maxfd = static_cast<int>(sysconf(_SC_OPEN_MAX));
-#elif OS(DARWIN)
+#elif OS(DARWIN) || OS(FREEBSD)
     int maxfd = getdtablesize();
 #else
     int maxfd = 1024;
@@ -65,12 +65,17 @@ static inline void closeRangeLoop(int start, int end, bool cloexec_only)
 // Platform-specific close range implementation
 static inline void closeRangeOrLoop(int start, int end, bool cloexec_only)
 {
+#if OS(LINUX) || OS(FREEBSD)
 #if OS(LINUX)
     unsigned int flags = cloexec_only ? CLOSE_RANGE_CLOEXEC : 0;
     if (bun_close_range(start, end, flags) == 0) {
         return;
     }
-    // Fallback for older kernels or when close_range fails
+#else
+    if (close_range(start, end, 0) == 0) {
+        return;
+    }
+#endif
 #endif
     closeRangeLoop(start, end, cloexec_only);
 }

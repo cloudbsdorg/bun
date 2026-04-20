@@ -64,17 +64,17 @@ if (!isInstalled) {
     console.error("Lezer C++ grammar is not installed. Please run `bun install` to install it.");
     process.exit(1);
   }
-  const r = Bun.spawnSync([process.argv[0], "install", "--frozen-lockfile"], {
+  const proc = Bun.spawn([process.argv[0], "install", "--frozen-lockfile"], {
     stdio: ["ignore", "pipe", "pipe"],
   });
-  if (r.exitCode !== 0) {
-    console.error(r.stdout.toString());
-    console.error(r.stderr.toString());
-    process.exit(r.exitCode ?? 1);
+  if ((await proc.exited) !== 0) {
+    console.error(await new Response(proc.stdout).text());
+    console.error(await new Response(proc.stderr).text());
+    process.exit(proc.exitCode ?? 1);
   }
 
-  const r2 = Bun.spawnSync([...process.argv, "--already-installed"], { stdio: ["inherit", "inherit", "inherit"] });
-  process.exit(r2.exitCode ?? 1);
+  const proc2 = Bun.spawn([...process.argv, "--already-installed"], { stdio: ["inherit", "inherit", "inherit"] });
+  process.exit((await proc2.exited) ?? 1);
 }
 
 type SyntaxNode = import("@lezer/common").SyntaxNode;

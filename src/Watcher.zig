@@ -36,7 +36,7 @@ thread_lock: bun.safety.ThreadLock = .initUnlocked(),
 
 pub const max_count = 128;
 pub const requires_file_descriptors = switch (Environment.os) {
-    .mac => true,
+    .mac, .freebsd => true,
     else => false,
 };
 
@@ -142,7 +142,7 @@ pub const max_eviction_count = 8096;
 // ideally, the constants above can be inlined
 const Platform = switch (Environment.os) {
     .linux => @import("./watcher/INotifyWatcher.zig"),
-    .mac => @import("./watcher/KEventWatcher.zig"),
+    .mac, .freebsd => @import("./watcher/KEventWatcher.zig"),
     .windows => WindowsWatcher,
     .wasm => @compileError("Unsupported platform"),
 };

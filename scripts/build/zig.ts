@@ -79,6 +79,7 @@ export function zigTarget(cfg: Config): string {
   const arch = cfg.x64 ? "x86_64" : "aarch64";
   if (cfg.darwin) return `${arch}-macos-none`;
   if (cfg.windows) return `${arch}-windows-msvc`;
+  if (cfg.freebsd) return `${arch}-freebsd-none`;
   // linux: abi is always set (resolveConfig asserts)
   assert(cfg.abi !== undefined, "linux build missing abi");
   return `${arch}-linux-${cfg.abi}`;
@@ -125,6 +126,7 @@ export function zigCpu(cfg: Config): string {
   if (cfg.arm64) {
     if (cfg.darwin) return "apple_m1";
     if (cfg.windows) return "cortex_a76";
+    if (cfg.freebsd) return "native";
     return "native";
   }
   // x64

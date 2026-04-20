@@ -108,3 +108,17 @@ extern "C" uint64_t Bun__Os__getFreeMemory(void)
     return uv_get_available_memory();
 }
 #endif
+
+#if OS(FREEBSD)
+#include <sys/sysctl.h>
+#include <unistd.h>
+
+extern "C" uint64_t Bun__Os__getFreeMemory(void)
+{
+    int free_count;
+    size_t size = sizeof(free_count);
+    if (sysctlbyname("vm.stats.vm.v_free_count", &free_count, &size, NULL, 0) == -1)
+        return 0;
+    return (uint64_t)free_count * getpagesize();
+}
+#endif

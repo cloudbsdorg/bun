@@ -1100,7 +1100,7 @@ pub const FilePoll = struct {
 };
 
 pub const Waker = switch (Environment.os) {
-    .mac => KEventWaker,
+    .mac, .freebsd => KEventWaker,
     .linux => LinuxWaker,
     .windows, .wasm => @compileError("unreachable"),
 };
@@ -1134,17 +1134,86 @@ pub const LinuxWaker = struct {
     }
 };
 
-pub const KEventWaker = struct {
+pub const KEventWaker = if (Environment.isMac) DarwinKEventWaker else GenericKEventWaker;
+
+pub const GenericKEventWaker = struct {
+    kq: std.posix.fd_t,
+    has_pending_wake: bool = false,
+
+    const zeroed = std.mem.zeroes([16]std.posix.Kevent);
+
+    pub fn wake(this: *GenericKEventWaker) void {
+        bun.jsc.markBinding(@src());
+
+        var ke: std.posix.Kevent = .{
+            .ident = 1,
+            .filter = std.posix.system.EVFILT.USER,
+            .flags = 0,
+            .fflags = std.posix.system.NOTE.TRIGGER,
+            .data = 0,
+            .udata = 0,
+        };
+        const rc = std.posix.kevent(this.kq, ke[0..1], &.{}, null);
+        if (rc != -1) {
+            this.has_pending_wake = false;
+            return;
+        }
+        this.has_pending_wake = true;
+    }
+
+    pub fn getFd(this: *const GenericKEventWaker) bun.FD {
+        return .fromNative(this.kq);
+    }
+
+    pub fn wait(this: GenericKEventWaker) void {
+        if (!bun.FD.fromNative(this.kq).isValid()) {
+            return;
+        }
+
+        bun.jsc.markBinding(@src());
+        var events = zeroed;
+
+        _ = std.posix.kevent(
+            this.kq,
+            &.{},
+            events[0..],
+            null,
+        );
+    }
+
+    pub fn init() !GenericKEventWaker {
+        return initWithFileDescriptor(bun.default_allocator, try std.posix.kqueue());
+    }
+
+    pub fn initWithFileDescriptor(allocator: std.mem.Allocator, kq: i32) !GenericKEventWaker {
+        _ = allocator;
+        bun.jsc.markBinding(@src());
+        bun.assert(kq > -1);
+
+        var ke: std.posix.Kevent = .{
+            .ident = 1,
+            .filter = std.posix.system.EVFILT.USER,
+            .flags = std.posix.system.EV.ADD | std.posix.system.EV.CLEAR,
+            .fflags = 0,
+            .data = 0,
+            .udata = 0,
+        };
+        _ = try std.posix.kevent(kq, ke[0..1], &.{}, null);
+        return GenericKEventWaker{
+            .kq = kq,
+        };
+    }
+};
+
+pub const DarwinKEventWaker = struct {
     kq: std.posix.fd_t,
     machport: bun.mach_port = undefined,
     machport_buf: []u8 = &.{},
     has_pending_wake: bool = false,
 
-    const zeroed = std.mem.zeroes([16]Kevent64);
+    const zeroed = std.mem.zeroes([16]std.posix.system.kevent64_s);
 
-    const Kevent64 = std.posix.system.kevent64_s;
-
-    pub fn wake(this: *Waker) void {
+    pub fn wake(this: *DarwinKEventWaker) void {
         bun.jsc.markBinding(@src());
 
         if (io_darwin_schedule_wakeup(this.machport)) {
@@ -1154,11 +1223,11 @@ pub const KEventWaker = struct {
         this.has_pending_wake = true;
     }
 
-    pub fn getFd(this: *const Waker) bun.FD {
+    pub fn getFd(this: *const DarwinKEventWaker) bun.FD {
         return .fromNative(this.kq);
     }
 
-    pub fn wait(this: Waker) void {
+    pub fn wait(this: DarwinKEventWaker) void {
         if (!bun.FD.fromNative(this.kq).isValid()) {
             return;
         }
@@ -1187,11 +1256,11 @@ pub const KEventWaker = struct {
 
     extern fn io_darwin_schedule_wakeup(bun.mach_port) bool;
 
-    pub fn init() !Waker {
+    pub fn init() !DarwinKEventWaker {
         return initWithFileDescriptor(bun.default_allocator, try std.posix.kqueue());
     }
 
-    pub fn initWithFileDescriptor(allocator: std.mem.Allocator, kq: i32) !Waker {
+    pub fn initWithFileDescriptor(allocator: std.mem.Allocator, kq: i32) !DarwinKEventWaker {
         bun.jsc.markBinding(@src());
         bun.assert(kq > -1);
         const machport_buf = try allocator.alloc(u8, 1024);
@@ -1204,7 +1273,7 @@ pub const KEventWaker = struct {
             return error.MachportCreationFailed;
         }
 
-        return Waker{
+        return DarwinKEventWaker{
             .kq = kq,
             .machport = machport,
             .machport_buf = machport_buf,

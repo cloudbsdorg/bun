@@ -12,7 +12,6 @@ if (!codegenRoot) {
 }
 
 const base_dir = join(import.meta.dirname, "../bake");
-process.chdir(base_dir); // to make bun build predictable in development
 
 function convertZigEnum(zig: string, names: string[]) {
   let output = "/** Generated from DevServer.zig */\n";
@@ -30,14 +29,17 @@ function convertZigEnum(zig: string, names: string[]) {
   return output;
 }
 
-function css(file: string, is_development: boolean): string {
-  const { success, stdout, stderr } = Bun.spawnSync({
-    cmd: [process.execPath, "build", file, "--minify"],
+async function css(file: string, is_development: boolean): Promise<string> {
+  const esbuild = join(import.meta.dirname, "../../node_modules/.bin/esbuild");
+  const proc = Bun.spawn({
+    cmd: [esbuild, file, "--minify"],
     cwd: import.meta.dir,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  if (!success) throw new Error(stderr.toString("utf-8"));
-  return stdout.toString("utf-8");
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  if ((await proc.exited) !== 0) throw new Error(stderr);
+  return stdout;
 }
 
 async function run() {
@@ -53,7 +55,7 @@ async function run() {
           side: JSON.stringify(side),
           IS_ERROR_RUNTIME: String(file === "error"),
           IS_BUN_DEVELOPMENT: String(!!debug),
-          OVERLAY_CSS: css("../bake/client/overlay.css", !!debug),
+          OVERLAY_CSS: await css(join(base_dir, "../bake/client/overlay.css"), !!debug),
         },
         minify: {
           syntax: !debug,

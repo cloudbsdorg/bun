@@ -303,13 +303,17 @@ function llvmSearchPaths(os: OS, arch: Arch): string[] {
     paths.push("C:\\Program Files\\LLVM\\bin");
   }
 
-  if (os === "linux" || os === "darwin") {
+  if (os === "linux" || os === "darwin" || os === "freebsd") {
+    paths.push("/usr/local/bin");
+    paths.push("/usr/bin");
     paths.push("/usr/lib/llvm/bin");
     // Debian/Ubuntu-style suffixed paths
     paths.push(`/usr/lib/llvm-${LLVM_MAJOR}.${LLVM_MINOR}.0/bin`);
     paths.push(`/usr/lib/llvm-${LLVM_MAJOR}.${LLVM_MINOR}/bin`);
     paths.push(`/usr/lib/llvm-${LLVM_MAJOR}/bin`);
     paths.push(`/usr/lib/llvm${LLVM_MAJOR}/bin`);
+    // FreeBSD-style suffixed paths
+    paths.push(`/usr/local/llvm${LLVM_MAJOR}/bin`);
   }
 
   return paths;
@@ -419,7 +423,7 @@ export function resolveLlvmToolchain(
   let ld: string;
   if (os === "windows") {
     ld = findLlvmTool("lld-link", paths, os, { checkVersion: false, required: true })?.path ?? "";
-  } else if (os === "linux") {
+  } else if (os === "linux" || os === "freebsd") {
     ld = findLlvmTool("ld.lld", paths, os, { checkVersion: true, required: true })?.path ?? "";
   } else {
     ld = ""; // darwin: unused
@@ -427,7 +431,7 @@ export function resolveLlvmToolchain(
 
   // strip: GNU strip on Linux (more features), llvm-strip elsewhere
   let strip: string;
-  if (os === "linux") {
+  if (os === "linux" || os === "freebsd") {
     strip = findTool({ names: ["strip"], required: true, hint: "Install binutils for your distro" })?.path ?? "";
   } else {
     strip = findLlvmTool("llvm-strip", paths, os, { checkVersion: false, required: true })?.path ?? "";

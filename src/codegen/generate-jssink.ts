@@ -1053,7 +1053,7 @@ await Bun.write(resolve(outDir + "/JSSink.h"), header());
 await Bun.write(resolve(outDir + "/JSSink.cpp"), await implementation());
 await Bun.write(resolve(outDir + "/JSSink.lut.txt"), lutInput());
 
-Bun.spawnSync(
+await Bun.spawn(
   [
     process.execPath,
     "run",
@@ -1064,4 +1064,4 @@ Bun.spawnSync(
   {
     stdio: ["inherit", "inherit", "inherit"],
   },
-);
+).exited;

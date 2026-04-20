@@ -564,6 +564,11 @@ export const defines: Flag[] = [
     desc: "Standard Windows defines + disable CRT security warnings",
   },
   {
+    flag: "FREEBSD=1",
+    when: c => c.freebsd,
+    desc: "Standard FreeBSD define",
+  },
+  {
     flag: "U_STATIC_IMPLEMENTATION",
     when: c => c.windows,
     desc: "ICU static linkage (without this: ABI mismatch → STATUS_STACK_BUFFER_OVERRUN)",

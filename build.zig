@@ -165,6 +165,7 @@ pub fn build(b: *Build) !void {
             .macos => .mac,
             .linux => .linux,
             .windows => .windows,
+            .freebsd => .freebsd,
             else => |t| std.debug.panic("Unsupported OS tag {}", .{t}),
         };
         const abi = temp_resolved.result.abi;
@@ -673,6 +674,7 @@ fn getTranslateC(b: *Build, initial_target: std.Build.ResolvedTarget, optimize: 
         .{ "POSIX", translate_c.target.result.os.tag != .windows },
         .{ "LINUX", translate_c.target.result.os.tag == .linux },
         .{ "DARWIN", translate_c.target.result.os.tag.isDarwin() },
+        .{ "FREEBSD", translate_c.target.result.os.tag == .freebsd },
     }) |entry| {
         const str, const value = entry;
         translate_c.defineCMacroRaw(b.fmt("{s}={d}", .{ str, @intFromBool(value) }));
@@ -755,7 +757,8 @@ fn configureObj(b: *Build, opts: *BunBuildOptions, obj: *Compile) void {
     if (@hasField(std.meta.Child(@TypeOf(obj)), "llvm_codegen_threads"))
         obj.llvm_codegen_threads = opts.llvm_codegen_threads orelse 0;
 
-    obj.no_link_obj = opts.os != .windows and !opts.no_llvm;
+    if (@hasField(std.meta.Child(@TypeOf(obj)), "no_link_obj"))
+        obj.no_link_obj = opts.os != .windows and !opts.no_llvm;
 
     if (opts.enable_asan and !enableFastBuild(b)) {
         if (@hasField(Build.Module, "sanitize_address")) {
@@ -848,7 +851,7 @@ fn addInternalImports(b: *Build, mod: *Module, opts: *BunBuildOptions) void {
 
     const zlib_internal_path = switch (os) {
         .windows => "src/deps/zlib.win32.zig",
-        .linux, .mac => "src/deps/zlib.posix.zig",
+        .linux, .mac, .freebsd => "src/deps/zlib.posix.zig",
         else => null,
     };
     if (zlib_internal_path) |path| {
@@ -858,7 +861,7 @@ fn addInternalImports(b: *Build, mod: *Module, opts: *BunBuildOptions) void {
     }
 
     const async_path = switch (os) {
-        .linux, .mac => "src/async/posix_event_loop.zig",
+        .linux, .mac, .freebsd => "src/async/posix_event_loop.zig",
         .windows => "src/async/windows_event_loop.zig",
         else => "src/async/stub_event_loop.zig",
     };

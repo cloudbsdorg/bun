@@ -221,15 +221,15 @@ const config_cli = [
   path.join(TMP_DIR, "modules_out"),
 ];
 verbose("running: ", config_cli);
-const out = Bun.spawnSync({
+const proc = Bun.spawn({
   cmd: config_cli,
   cwd: process.cwd(),
   env: process.env,
   stdio: ["pipe", "pipe", "pipe"],
 });
-if (out.exitCode !== 0) {
-  console.error(out.stderr.toString());
-  process.exit(out.exitCode);
+if ((await proc.exited) !== 0) {
+  console.error(await new Response(proc.stderr).text());
+  process.exit(proc.exitCode ?? 1);
 }
 
 mark("Bundle modules");

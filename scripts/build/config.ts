@@ -17,7 +17,7 @@ import { clangTargetArch } from "./tools.ts";
 import { cyan, dim, green } from "./tty.ts";
 import { defaultZigCommit } from "./zig.ts";
 
-export type OS = "linux" | "darwin" | "windows";
+export type OS = "linux" | "darwin" | "windows" | "freebsd";
 export type Arch = "x64" | "aarch64";
 export type Abi = "gnu" | "musl";
 export type BuildType = "Debug" | "Release" | "RelWithDebInfo" | "MinSizeRel";
@@ -71,7 +71,8 @@ export interface Config {
   linux: boolean;
   darwin: boolean;
   windows: boolean;
-  /** linux || darwin */
+  freebsd: boolean;
+  /** linux || darwin || freebsd */
   unix: boolean;
   x64: boolean;
   arm64: boolean;
@@ -301,11 +302,13 @@ export function detectHost(): Host {
         ? "darwin"
         : plat === "win32"
           ? "windows"
-          : (() => {
-              throw new BuildError(`Unsupported host platform: ${plat}`, {
-                hint: "Bun builds on linux, darwin, or windows",
-              });
-            })();
+          : plat === "freebsd"
+            ? "freebsd"
+            : (() => {
+                throw new BuildError(`Unsupported host platform: ${plat}`, {
+                  hint: "Bun builds on linux, darwin, windows, or freebsd",
+                });
+              })();
 
   const a = hostArch();
   const arch: Arch =
@@ -349,7 +352,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
   const linux = os === "linux";
   const darwin = os === "darwin";
   const windows = os === "windows";
-  const unix = linux || darwin;
+  const freebsd = os === "freebsd";
+  const unix = linux || darwin || freebsd;
   const x64 = arch === "x64";
   const arm64 = arch === "aarch64";
 
@@ -490,6 +494,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     linux,
     darwin,
     windows,
+    freebsd,
     unix,
     x64,
     arm64,

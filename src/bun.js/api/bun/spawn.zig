@@ -335,7 +335,7 @@ pub const PosixSpawn = struct {
         //   setsid() + ioctl(TIOCSCTTY) before exec, which system posix_spawn can't do.
         //   For non-PTY spawns on macOS, we use system posix_spawn which is safer
         //   (Apple's posix_spawn uses a kernel fast-path that avoids fork() entirely).
-        const use_bun_spawn = Environment.isLinux or (Environment.isMac and pty_slave_fd >= 0);
+        const use_bun_spawn = Environment.isLinux or Environment.isFreeBSD or (Environment.isMac and pty_slave_fd >= 0);
 
         if (use_bun_spawn) {
             return BunSpawnRequest.spawn(

@@ -14,6 +14,7 @@ const platform_defs = switch (Environment.os) {
     .windows => @import("./errno/windows_errno.zig"),
     .linux => @import("./errno/linux_errno.zig"),
     .mac => @import("./errno/darwin_errno.zig"),
+    .freebsd => @import("./errno/freebsd_errno.zig"),
     .wasm => {},
 };
 pub const workaround_symbols = @import("./workaround_missing_symbols.zig").current;
@@ -51,8 +52,8 @@ pub const syslog = log;
 
 pub const syscall = switch (Environment.os) {
     .linux => std.os.linux,
-    // macOS requires using libc
-    .mac => std.c,
+    // macOS and FreeBSD require using libc
+    .mac, .freebsd => std.c,
     .windows, .wasm => @compileError("not implemented"),
 };
 
@@ -90,6 +91,38 @@ pub const O = switch (Environment.os) {
         pub const NOCTTY = 131072;
         pub const POPUP = 2147483648;
         pub const SYNC = 128;
+
+        pub const toPacked = toPackedO;
+    },
+    .freebsd => struct {
+        pub const RDONLY = 0x0000;
+        pub const WRONLY = 0x0001;
+        pub const RDWR = 0x0002;
+        pub const NONBLOCK = 0x0004;
+        pub const APPEND = 0x0008;
+        pub const SHLOCK = 0x0010;
+        pub const EXLOCK = 0x0020;
+        pub const ASYNC = 0x0040;
+        pub const SYNC = 0x0080;
+        pub const FSYNC = 0x0080;
+        pub const NOFOLLOW = 0x0100;
+        pub const CREAT = 0x0200;
+        pub const TRUNC = 0x0400;
+        pub const EXCL = 0x0800;
+        pub const NOCTTY = 0x8000;
+        pub const DIRECT = 0x00010000;
+        pub const DIRECTORY = 0x00020000;
+        pub const EXEC = 0x00040000;
+        pub const SEARCH = EXEC;
+        pub const TTY_INIT = 0x00080000;
+        pub const CLOEXEC = 0x00100000;
+        pub const VERIFY = 0x00200000;
+        pub const RESOLVE_BENEATH = 0x00800000;
+        pub const DSYNC = 0x01000000;
+        pub const EMPTY_PATH = 0x02000000;
+        pub const NAMETOOLONG = 0x04000000;
+        pub const CLOFORK = 0x08000000;
+        pub const ACCMODE = 0x0003;
 
         pub const toPacked = toPackedO;
     },
