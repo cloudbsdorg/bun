@@ -820,7 +820,7 @@ fn NewLexer_(
 
             // Track the approximate number of newlines in the file so we can preallocate
             // the line offset table in the printer for source maps. The line offset table
-            // is the #1 highest allocation in the heap profile, so this is worth doing.
+            // is the @"1" highest allocation in the heap profile, so this is worth doing.
             // This count is approximate because it handles "\n" and "\r\n" (the common
             // cases) but not "\r" or "\u2028" or "\u2029". Getting this wrong is harmless
             // because it's only a preallocation. The array will just grow if it's too small.

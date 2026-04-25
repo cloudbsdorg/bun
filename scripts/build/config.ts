@@ -381,8 +381,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
   // ─── Features ───
   // Each is resolved exactly once here.
 
-  // ASAN: default on for debug builds on arm64 macOS, linux or freebsd
-  const asanDefault = debug && ((darwin && arm64) || linux || freebsd);
+  // ASAN: default on for debug builds on arm64 macOS or linux
+  const asanDefault = debug && ((darwin && arm64) || linux);
   const asan = partial.asan ?? asanDefault;
 
   // Zig ASAN follows ASAN unless explicitly overridden

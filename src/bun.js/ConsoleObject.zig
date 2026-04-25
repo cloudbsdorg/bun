@@ -2332,7 +2332,7 @@ pub const Formatter = struct {
                 // `calculatedClassName` walks the prototype chain and hits
                 // `Function.prototype.constructor === Function`, returning
                 // "Function". The `.name` property is set to the real class
-                // name on the constructor itself. See #29225.
+                // name on the constructor itself. See @"29225".
                 var printable = try value.getName(this.globalThis);
                 defer printable.deref();
                 this.addForNewLine(printable.length());

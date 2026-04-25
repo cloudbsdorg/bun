@@ -124,6 +124,13 @@ pub const O = switch (Environment.os) {
         pub const CLOFORK = 0x08000000;
         pub const ACCMODE = 0x0003;
 
+        pub const kinfo_file = struct {
+            kf_structsize: i32,
+            _unused: [364]u8,
+            kf_path: [1024]u8,
+        };
+        pub const F_KINFO = 22;
+
         pub const toPacked = toPackedO;
     },
     .linux, .wasm => switch (Environment.isX86) {
@@ -2858,6 +2865,18 @@ fn getFdPathFreeBSDLinuxulator(fd: bun.FD, out_buffer: *bun.PathBuffer) Maybe([]
     };
 }
 
+fn getFdPathFreeBSD(fd: bun.FD, out_buffer: *bun.PathBuffer) Maybe([]u8) {
+    var kif: O.freebsd.kinfo_file = undefined;
+    kif.kf_structsize = @sizeOf(O.freebsd.kinfo_file);
+    switch (fcntl(fd, O.freebsd.F_KINFO, @intFromPtr(&kif))) {
+        .err => |err| return .{ .err = err },
+        .result => {},
+    }
+    const path = std.mem.sliceTo(&kif.kf_path, 0);
+    @memcpy(out_buffer[0..path.len], path);
+    return .{ .result = out_buffer[0..path.len] };
+}
+
 pub fn getFdPath(fd: bun.FD, out_buffer: *bun.PathBuffer) Maybe([]u8) {
     switch (Environment.os) {
         .windows => {
@@ -2904,7 +2923,7 @@ pub fn getFdPath(fd: bun.FD, out_buffer: *bun.PathBuffer) Maybe([]u8) {
             };
         },
         .freebsd => {
-            return getFdPathFreeBSDLinuxulator(fd, out_buffer);
+            return getFdPathFreeBSD(fd, out_buffer);
         },
         .wasm => @compileError("querying for canonical path of a handle is unsupported on this host"),
     }

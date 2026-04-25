@@ -18,9 +18,13 @@ Commands:
 let codegenPath: string;
 let sources: string[];
 
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+
 function getNamedExports(): NamedType[] {
   return sources.flatMap(path => {
-    const exports = import.meta.require(path);
+    const exports = (typeof (import.meta as any).require === "function" ? (import.meta as any).require(path) : require(path));
     return Object.values(exports).filter(v => v instanceof NamedType);
   });
 }

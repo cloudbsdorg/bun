@@ -45,13 +45,13 @@ pub const ElfFile = struct {
 
     /// If PT_INTERP points into a Nix/Guix store path, rewrite it to the
     /// standard FHS path so `bun build --compile` output stays portable when
-    /// the bun binary itself was patchelf'd (NixOS autoPatchelfHook). See #24742.
+    /// the bun binary itself was patchelf'd (NixOS autoPatchelfHook). See @"24742".
     ///
     /// Skipped when the host system itself uses a Nix/Guix store interpreter
     /// (i.e. the running bun process has a store-path PT_INTERP): on NixOS
     /// `/lib64/ld-linux-x86-64.so.2` is a stub that refuses to run generic
     /// binaries, so normalizing there would break locally-run compiled output
-    /// (#29290). Cross-compile-style portability is preserved on any non-Nix
+    /// (@"29290"). Cross-compile-style portability is preserved on any non-Nix
     /// Linux host that happens to have a patchelf'd bun installed.
     ///
     /// Store paths are always longer than the FHS path, so this is an in-place
@@ -351,10 +351,10 @@ fn alignUp(value: u64, alignment: u64) u64 {
 /// True iff the host bun is running on is managed by Nix or Guix — in which
 /// case the "generic" FHS linker path `/lib64/ld-linux-x86-64.so.2` is a stub
 /// that rejects generic binaries, and rewriting PT_INTERP to it would break
-/// locally-run `bun build --compile` output. See #29290.
+/// locally-run `bun build --compile` output. See @"29290".
 ///
 /// Checks (any one is sufficient):
-///   1. `BUN_DEBUG_FORCE_NIX_HOST` — test-only override used by #29290's
+///   1. `BUN_DEBUG_FORCE_NIX_HOST` — test-only override used by @"29290"'s
 ///      regression test to exercise this branch without writing to `/etc`.
 ///   2. The running bun process's own PT_INTERP (via `/proc/self/exe`). NixOS
 ///      `autoPatchelfHook` rewrites installed binaries to `/nix/store/...`
@@ -368,14 +368,14 @@ fn alignUp(value: u64, alignment: u64) u64 {
 ///
 /// Always `false` on non-Linux hosts: `bun build --compile` for a Linux target
 /// can run on macOS/Windows, in which case the host's linker layout is
-/// irrelevant and we want to normalize for portability (#24742).
+/// irrelevant and we want to normalize for portability (@"24742").
 fn hostUsesNixStoreInterpreter() bool {
     if (comptime !bun.Environment.isLinux) return false;
 
     const cache = struct {
         var computed: std.atomic.Value(u8) = .init(0); // 0 unknown, 1 no, 2 yes
         fn check() bool {
-            // Test-only override: lets #29290's regression test force the
+            // Test-only override: lets @"29290"'s regression test force the
             // Nix-host branch without mutating `/etc/NIXOS` on the shared
             // rootfs (which would poison concurrent test workers).
             if (bun.env_var.BUN_DEBUG_FORCE_NIX_HOST.get()) return true;

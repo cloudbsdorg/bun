@@ -142,8 +142,8 @@ pub fn canMergeSymbols(
         return .replace_with_new;
     }
 
-    // "get #foo() {} set #foo() {}"
-    // "set #foo() {} get #foo() {}"
+    // "get @"foo"() {} set @"foo"() {}"
+    // "set @"foo"() {} get @"foo"() {}"
     if ((existing == .private_get and new == .private_set) or
         (existing == .private_set and new == .private_get))
     {

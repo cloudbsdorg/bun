@@ -248,17 +248,25 @@ int bsd_udp_setup_sendbuf(struct udp_sendbuf *buf, size_t bufsize, void** payloa
 // an udp socket can only bind to one port, and that port never changes
 // this function returns ONLY the IP address, not any port
 int bsd_udp_packet_buffer_local_ip(struct udp_recvbuf *msgvec, int index, char *ip) {
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__FreeBSD__) || defined(FREEBSD)
     return 0; // not supported
 #else
     struct msghdr *mh = &((struct mmsghdr *) msgvec)[index].msg_hdr;
     for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(mh); cmsg != NULL; cmsg = CMSG_NXTHDR(mh, cmsg)) {
         // ipv6 or ipv4
+#ifdef IP_PKTINFO
         if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
             struct in_pktinfo *pi = (struct in_pktinfo *) CMSG_DATA(cmsg);
             memcpy(ip, &pi->ipi_addr, 4);
             return 4;
         }
+#elif defined(IP_RECVDSTADDR)
+        if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_RECVDSTADDR) {
+            struct in_addr *pi = (struct in_addr *) CMSG_DATA(cmsg);
+            memcpy(ip, pi, 4);
+            return 4;
+        }
+#endif
 
         if (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO) {
             struct in6_pktinfo *pi6 = (struct in6_pktinfo *) CMSG_DATA(cmsg);
@@ -1350,7 +1358,11 @@ LIBUS_SOCKET_DESCRIPTOR bsd_create_udp_socket(const char *host, int port, int op
     int enabled = 1;
     if (setsockopt(listenFd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &enabled, sizeof(enabled)) == -1) {
         if (errno == ENOPROTOOPT || errno == EINVAL) {
+#ifdef IP_PKTINFO
             setsockopt(listenFd, IPPROTO_IP, IP_PKTINFO, &enabled, sizeof(enabled));
+#elif defined(IP_RECVDSTADDR)
+            setsockopt(listenFd, IPPROTO_IP, IP_RECVDSTADDR, &enabled, sizeof(enabled));
+#endif
         }
     }
 

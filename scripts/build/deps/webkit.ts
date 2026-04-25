@@ -69,7 +69,7 @@ function prebuiltSuffix(cfg: Config): string {
 }
 
 function prebuiltUrl(cfg: Config): string {
-  const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : "linux";
+  const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : (cfg.freebsd ? "linux" : "linux");
   const arch = cfg.arm64 ? "arm64" : "amd64";
   const name = `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}`;
   const version = cfg.webkitVersion;
@@ -116,7 +116,7 @@ function prebuiltIcuLibs(cfg: Config): string[] {
     const d = cfg.debug ? "d" : "";
     return [`lib/sicudt${d}.lib`, `lib/sicuin${d}.lib`, `lib/sicuuc${d}.lib`];
   }
-  if (cfg.linux) {
+  if (cfg.linux || cfg.freebsd) {
     return ["lib/libicudata.a", "lib/libicui18n.a", "lib/libicuuc.a"];
   }
   return []; // darwin: system ICU

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # @file trace.sh
 # @summary build + run bun with Instruments. All args are forwarded to `bun-debug`.

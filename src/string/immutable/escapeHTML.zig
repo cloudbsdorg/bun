@@ -161,7 +161,7 @@ pub fn escapeHTMLForLatin1Input(allocator: std.mem.Allocator, latin1: []const u8
             };
 
             if (comptime Environment.enableSIMD) {
-                // pass #1: scan for any characters that need escaping
+                // pass @"1": scan for any characters that need escaping
                 // assume most strings won't need any escaping, so don't actually allocate the buffer
                 scan_and_allocate_lazily: while (remaining.len >= ascii_vector_size) {
                     if (comptime Environment.allow_assert) assert(!any_needs_escape);
@@ -220,7 +220,7 @@ pub fn escapeHTMLForLatin1Input(allocator: std.mem.Allocator, latin1: []const u8
             }
 
             if (any_needs_escape) {
-                // pass #2: we found something that needed an escape
+                // pass @"2": we found something that needed an escape
                 // so we'll go ahead and copy the buffer into a new buffer
                 while (remaining.len >= ascii_vector_size) {
                     const vec: AsciiVector = remaining[0..ascii_vector_size].*;
@@ -412,7 +412,7 @@ pub fn escapeHTMLForUTF16Input(allocator: std.mem.Allocator, utf16: []const u16)
                     }
                     break :brk _vecs;
                 };
-                // pass #1: scan for any characters that need escaping
+                // pass @"1": scan for any characters that need escaping
                 // assume most strings won't need any escaping, so don't actually allocate the buffer
                 scan_and_allocate_lazily: while (remaining.len >= ascii_u16_vector_size) {
                     if (comptime Environment.allow_assert) assert(!any_needs_escape);
@@ -491,7 +491,7 @@ pub fn escapeHTMLForUTF16Input(allocator: std.mem.Allocator, utf16: []const u16)
                 }
 
                 if (any_needs_escape) {
-                    // pass #2: we found something that needed an escape
+                    // pass @"2": we found something that needed an escape
                     // but there's still some more text to
                     // so we'll go ahead and copy the buffer into a new buffer
                     while (remaining.len >= ascii_u16_vector_size) {

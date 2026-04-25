@@ -42,6 +42,10 @@
 #include "cmakeconfig.h"
 #endif
 
+#if defined(__FreeBSD__)
+#undef HAVE_FEATURES_H
+#endif
+
 #define JSC_API_AVAILABLE(...)
 #define JSC_CLASS_AVAILABLE(...) JS_EXPORT
 #define JSC_API_DEPRECATED(...)

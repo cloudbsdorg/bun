@@ -857,7 +857,7 @@ pub const Parser = struct {
                                     //      import * as Foo from 'bar';
                                     //      module.exports = Foo;
                                     //
-                                    // This is what fixes #3537
+                                    // This is what fixes @"3537"
                                     if (right.data == .e_identifier and
                                         p.import_records.items.len == 1 and
                                         p.imports_to_convert_from_require.items.len == 1 and

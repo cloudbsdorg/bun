@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # LLDB Inline Debug Tool Build & Run Script
 #
 # This script builds the lldb-inline tool if needed and runs it.

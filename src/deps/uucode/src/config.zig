@@ -235,7 +235,7 @@ pub const default = Table{
 
         // EmojiVariationSequences
         // These are all going to be equivalent, but
-        // `emoji-variation-sequences.txt` and UTS #51 split out the emoji and
+        // `emoji-variation-sequences.txt` and UTS @"51" split out the emoji and
         // text variation sequences separately. However, ever since these were
         // introduced in Unicode 6.1 (see
         // https://unicode.org/Public/6.1.0/ucd/StandardizedVariants.txt --

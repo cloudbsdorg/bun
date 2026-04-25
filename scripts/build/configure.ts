@@ -6,7 +6,7 @@
  * can configure once then run specific targets.
  */
 
-import { globSync, mkdirSync } from "node:fs";
+import { existsSync, globSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { globAllSources } from "../glob-sources.ts";
 import { type BunOutput, bunExeName, emitBun, shouldStrip, validateBunConfig } from "./bun.ts";
@@ -54,7 +54,8 @@ export function resolveToolchain(): Toolchain {
 
   // zig — lives at vendor/zig/, downloaded by the zig_fetch rule.
   // Same deal: path is deterministic, download happens at build time.
-  const zig = resolve(repoRoot, "vendor", "zig", host.os === "windows" ? "zig.exe" : "zig");
+  // FreeBSD: use native build (zig.native) if available, otherwise fall back to zig
+  const zig = resolve(repoRoot, "vendor", "zig", host.os === "windows" ? "zig.exe" : host.os === "freebsd" && existsSync(resolve(repoRoot, "vendor", "zig", "zig.native")) ? "zig.native" : "zig");
 
   const bun = findBun(host.os);
 

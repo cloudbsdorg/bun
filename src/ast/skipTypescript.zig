@@ -532,7 +532,7 @@ pub fn SkipTypescript(
                             }
                             try p.lexer.next();
 
-                            // "typeof x.#y"
+                            // "typeof x.@"y""
                             // "typeof x.y"
                             while (p.lexer.token == .t_dot) {
                                 try p.lexer.next();

@@ -30,8 +30,9 @@ type NativeCallType = "zig" | "cpp" | "bind";
 const nativeCalls: NativeCall[] = [];
 const wrapperCalls: WrapperCall[] = [];
 
+const __dirname = import.meta.dirname || (import.meta as any).dir;
 const sourceFiles = readdirRecursiveWithExclusionsAndExtensionsSync(
-  path.join(import.meta.dir, "../"),
+  path.join(__dirname, "../"),
   ["deps", "node_modules", "WebKit"],
   [".cpp", ".zig", ".bind.ts"],
 );
@@ -111,7 +112,8 @@ function symbol(call: Pick<NativeCall, "type" | "symbol" | "filename">) {
 function normalizeSymbolPathPrefix(input: string) {
   input = path.resolve(input);
 
-  const bunDir = path.resolve(path.join(import.meta.dir, "..", ".."));
+  const __dirname = import.meta.dirname || (import.meta as any).dir;
+  const bunDir = path.resolve(path.join(__dirname, "..", ".."));
   if (input.startsWith(bunDir)) {
     input = input.slice(bunDir.length);
   }

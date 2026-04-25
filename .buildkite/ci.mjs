@@ -31,7 +31,7 @@ import {
 } from "../scripts/utils.mjs";
 
 /**
- * @typedef {"linux" | "darwin" | "windows"} Os
+ * @typedef {"linux" | "darwin" | "windows" | "freebsd"} Os
  * @typedef {"aarch64" | "x64"} Arch
  * @typedef {"musl"} Abi
  * @typedef {"debian" | "ubuntu" | "alpine" | "amazonlinux"} Distro
@@ -132,6 +132,7 @@ const buildPlatforms = [
   { os: "windows", arch: "x64", release: "2019" },
   { os: "windows", arch: "x64", baseline: true, release: "2019" },
   { os: "windows", arch: "aarch64", release: "11" },
+  { os: "freebsd", arch: "x64", release: "14" },
 ];
 
 /**
@@ -155,6 +156,7 @@ const testPlatforms = [
   { os: "windows", arch: "x64", release: "2019", tier: "oldest" },
   { os: "windows", arch: "x64", release: "2019", baseline: true, tier: "oldest" },
   { os: "windows", arch: "aarch64", release: "11", tier: "latest" },
+  { os: "freebsd", arch: "x64", release: "14", tier: "latest" },
 ];
 
 /**

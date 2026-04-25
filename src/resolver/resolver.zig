@@ -700,10 +700,10 @@ pub const Resolver = struct {
         }
 
         // Certain types of URLs default to being external for convenience,
-        // while these rules should not be applied to the entrypoint as it is never external (#12734)
+        // while these rules should not be applied to the entrypoint as it is never external (@"12734")
         if (kind != .entry_point_build and kind != .entry_point_run and
             (r.isExternalPattern(import_path) or
-                // "fill: url(#filter);"
+                // "fill: url(@"filter");"
                 (kind.isFromCSS() and strings.startsWith(import_path, "#")) or
 
                 // "background: url(http://example.com/images/image.png);"

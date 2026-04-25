@@ -44,7 +44,7 @@
 //!   (https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-5/#G1099).
 //!   Therefore, `wcwidth_standalone` is given a width of 1.
 //!
-//!   Note: Per UAX #44, nonspacing marks (Mn) have "zero advance width" while
+//!   Note: Per UAX @"44", nonspacing marks (Mn) have "zero advance width" while
 //!   spacing marks (Mc) have "positive advance width"
 //!   (https://www.unicode.org/reports/tr44/#General_Category_Values).
 //!   Enclosing marks (Me) are not explicitly specified, but in terminal
@@ -55,17 +55,17 @@
 //!   Therefore, `wcwidth_zero_in_grapheme` is true for nonspacing marks (Mn)
 //!   and enclosing marks (Me).
 //!
-//! * East Asian Width (UAX #11, https://www.unicode.org/reports/tr11/) is used
-//!   to determine width, but only as a starting point. UAX #11 warns that
+//! * East Asian Width (UAX @"11", https://www.unicode.org/reports/tr11/) is used
+//!   to determine width, but only as a starting point. UAX @"11" warns that
 //!   East_Asian_Width "is not intended for use by modern terminal emulators
-//!   without appropriate tailoring" (UAX #11 §2,
+//!   without appropriate tailoring" (UAX @"11" §2,
 //!   https://www.unicode.org/reports/tr11/#Scope). This implementation applies
 //!   tailoring for specific cases such as regional indicators.
 //!
-//!   Ambiguous width (A) characters are treated as width 1. Per UAX #11 §5
+//!   Ambiguous width (A) characters are treated as width 1. Per UAX @"11" §5
 //!   Recommendations: "If the context cannot be established reliably, they
 //!   should be treated as narrow characters by default"
-//!   (https://www.unicode.org/reports/tr11/#Recommendations), and per UAX #11
+//!   (https://www.unicode.org/reports/tr11/#Recommendations), and per UAX @"11"
 //!   §4.2 Ambiguous Characters: "Modern practice is evolving toward rendering
 //!   ever more of the ambiguous characters with proportionally spaced, narrow
 //!   forms that rotate with the direction of writing, independent of their
@@ -75,7 +75,7 @@
 //!   sequences like 1️⃣ (digit + VS16 + U+20E3), but when standing alone might
 //!   render as an empty keycap symbol visually occupying 2 cells, so sit is
 //!   given width 2. This is a special case—other enclosing marks like U+20DD
-//!   COMBINING ENCLOSING CIRCLE are width 1. UTS #51 §1.4.6 ED-20 states
+//!   COMBINING ENCLOSING CIRCLE are width 1. UTS @"51" §1.4.6 ED-20 states
 //!   "Other components (U+20E3 COMBINING ENCLOSING KEYCAP, ...) should never
 //!   have an emoji presentation in isolation"
 //!   (https://www.unicode.org/reports/tr51/#def_basic_emoji_set), so this
@@ -85,18 +85,18 @@
 //!   width of 2 from the special VS16 handling.
 //!
 //! * Regional indicator symbols (U+1F1E6..U+1F1FF) are treated as width 2,
-//!   whether paired in valid emoji flag sequences or standing alone. Per UTS #51
+//!   whether paired in valid emoji flag sequences or standing alone. Per UTS @"51"
 //!   §1.5 Conformance: "A singleton emoji Regional Indicator may be displayed
 //!   as a capital A..Z character with a special display"
 //!   (https://www.unicode.org/reports/tr51/#C3). Unpaired regional indicators
 //!   commonly render as the corresponding letter in a width-2 box (e.g., 🇺
 //!   displays as "U" in a box). See the above bullet point (U+20E3) for the
-//!   text from UTS #51 §1.4.6 ED-20 that also applies to regional indicators,
+//!   text from UTS @"51" §1.4.6 ED-20 that also applies to regional indicators,
 //!   meaning they should have a text presentation in isolation.
 //!
 //! * Default_Ignorable_Code_Point characters are treated as width 0. These are
 //!   characters that "should be ignored in rendering (unless explicitly
-//!   supported)" (UAX #44,
+//!   supported)" (UAX @"44",
 //!   https://www.unicode.org/reports/tr44/#Default_Ignorable_Code_Point). This
 //!   includes variation selectors, join controls (ZWJ/ZWNJ), bidi formatting
 //!   controls, tag characters, and other invisible format controls.
@@ -134,7 +134,7 @@
 //!
 //! * U+2028 LINE SEPARATOR (Zl) and U+2029 PARAGRAPH SEPARATOR (Zp) are
 //!   treated as width 0. They introduce mandatory line/paragraph breaks (UAX
-//!   #14, Line_Break=BK, https://www.unicode.org/reports/tr14/#BK) and do not
+//!   @"14", Line_Break=BK, https://www.unicode.org/reports/tr14/#BK) and do not
 //!   advance horizontally on the same line.
 //!
 //! * Emoji modifiers (Fitzpatrick skin tone modifiers U+1F3FB..U+1F3FF) have

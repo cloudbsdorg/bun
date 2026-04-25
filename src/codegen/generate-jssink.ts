@@ -1057,7 +1057,7 @@ await Bun.spawn(
   [
     process.execPath,
     "run",
-    join(import.meta.dir, "create-hash-table.ts"),
+    join(import.meta.dirname || (import.meta as any).dir, "create-hash-table.ts"),
     resolve(outDir + "/JSSink.lut.txt"),
     join(outDir, "JSSink.lut.h"),
   ],

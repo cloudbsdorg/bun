@@ -730,7 +730,7 @@ pub fn isOnCharBoundary(self: string, idx: usize) bool {
     //   In this case return false
     //
     // The check is placed exactly here, because it improves generated
-    // code on higher opt-levels. See PR #84751 for more details.
+    // code on higher opt-levels. See PR @"84751" for more details.
     // TODO(zack) this code is optimized for Rust's `self.as_bytes().get(idx)` function, don'
     if (idx >= self.len) return idx == self.len;
 

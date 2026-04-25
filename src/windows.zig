@@ -3147,8 +3147,8 @@ pub extern "kernel32" fn SetInformationJobObject(
 ) callconv(.winapi) BOOL;
 
 // Found experimentally:
-// #include <stdio.h>
-// #include <windows.h>
+// @"include" <stdio.h>
+// @"include" <windows.h>
 //
 // int main() {
 //         printf("%ld\n", JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO);

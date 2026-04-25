@@ -6,6 +6,8 @@
 import assert from "node:assert";
 import fs from "node:fs";
 import * as path from "node:path";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import {
   ArgStrategyChildItem,
   CodeWriter,
@@ -1178,7 +1180,7 @@ for (const fileName of [...unsortedFiles].sort()) {
     files.set(zigFile, file);
   }
 
-  const exports = import.meta.require(fileName);
+  const exports = (typeof (import.meta as any).require === "function" ? (import.meta as any).require(fileName) : require(fileName));
 
   // Mark all exported TypeImpl as reachable
   for (let [key, value] of Object.entries(exports)) {

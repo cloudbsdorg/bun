@@ -2817,12 +2817,12 @@ pub fn resolve(globalObject: *jsc.JSGlobalObject, isWindows: bool, args_ptr: [*]
 
     if (comptime Environment.isPosix) {
         if (!isWindows) {
-            // Micro-optimization #1: avoid creating a new string when passing no arguments or only empty strings.
+            // Micro-optimization @"1": avoid creating a new string when passing no arguments or only empty strings.
             if (paths.len == 0) {
                 return Process__getCachedCwd(globalObject);
             }
 
-            // Micro-optimization #2: path.resolve(".") and path.resolve("./") === process.cwd()
+            // Micro-optimization @"2": path.resolve(".") and path.resolve("./") === process.cwd()
             else if (paths.len == 1 and (strings.eqlComptime(paths[0], ".") or strings.eqlComptime(paths[0], "./"))) {
                 return Process__getCachedCwd(globalObject);
             }

@@ -10,9 +10,10 @@
 // library, instead of RegExp hacks.
 import fs from "fs";
 import { mkdir, writeFile } from "fs/promises";
-import { builtinModules } from "node:module";
+import { builtinModules, createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import path from "path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import jsclasses from "./../bun.js/bindings/js_classes";
 import { sliceSourceCode } from "./builtin-parser";
@@ -36,7 +37,19 @@ if (!CMAKE_BUILD_ROOT) {
 }
 
 globalThis.CMAKE_BUILD_ROOT = CMAKE_BUILD_ROOT;
-const bundleBuiltinFunctions = require("./bundle-functions").bundleBuiltinFunctions;
+const bundleFunctionsModule = (typeof (import.meta as any).require === "function" 
+  ? (import.meta as any).require("./bundle-functions") 
+  : (await import(pathToFileURL(path.join(__dirname, "bundle-functions.ts")).href)));
+let bundleBuiltinFunctions = bundleFunctionsModule.bundleBuiltinFunctions || bundleFunctionsModule.default?.bundleBuiltinFunctions;
+if (typeof bundleBuiltinFunctions !== "function" && bundleFunctionsModule.default) {
+   // Handle potential wrapped default
+   bundleBuiltinFunctions = bundleFunctionsModule.default.bundleBuiltinFunctions;
+}
+if (typeof bundleBuiltinFunctions !== "function") {
+  console.log(`[debug] bundleFunctionsModule keys: ${Object.keys(bundleFunctionsModule)}`);
+  if (bundleFunctionsModule.default) console.log(`[debug] bundleFunctionsModule.default keys: ${Object.keys(bundleFunctionsModule.default)}`);
+  throw new Error("bundleBuiltinFunctions is not a function");
+}
 
 const TMP_DIR = path.join(CMAKE_BUILD_ROOT, "tmp_modules");
 const CODEGEN_DIR = path.join(CMAKE_BUILD_ROOT, "codegen");
@@ -45,12 +58,18 @@ const JS_DIR = path.join(CMAKE_BUILD_ROOT, "js");
 const t = {
   scan: (input: string) => {
     const exports: string[] = [];
-    if (/\bexport\s+default\b/.test(input)) exports.push("default");
-    const m = input.match(/\bexport\s+(?:function|class|const|let|var)\s+([a-zA-Z0-9_$]+)/g);
-    if (m) {
-      for (const match of m) {
-        const name = match.split(/\s+/).pop();
-        if (name) exports.push(name);
+    const lines = input.split("\n");
+    for (let line of lines) {
+      if (line.startsWith("//")) continue;
+      
+      if (line.startsWith("export default")) {
+        exports.push("default");
+        continue;
+      }
+      
+      const m = line.match(/^export\s+(?:function|class|const|let|var)\s+([a-zA-Z0-9_$]+)/);
+      if (m) {
+        exports.push(m[1]);
       }
     }
     return {
@@ -62,6 +81,41 @@ const t = {
 const Bun = {
   env: process.env,
   sleep: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+  Glob: class {
+    pattern: string;
+    constructor(pattern: string) {
+      this.pattern = pattern;
+    }
+    scanSync() {
+      const dir = path.dirname(this.pattern);
+      const ext = path.extname(this.pattern);
+      return fs.readdirSync(dir)
+        .filter(f => f.endsWith(ext))
+        .map(f => path.join(dir, f));
+    }
+  },
+  build: async (options: any) => {
+    const esbuild = path.join(__dirname, "../../node_modules/.bin/esbuild");
+    const args = [options.entrypoints[0], "--bundle", "--format=esm", "--target=esnext"];
+    if (options.target === "bun" || options.target === "node") {
+       args.push("--platform=node");
+    }
+    if (options.minify) args.push("--minify");
+    if (options.define) {
+      for (const [key, value] of Object.entries(options.define)) {
+        args.push(`--define:${key}=${value}`);
+      }
+    }
+    const res = spawnSync(esbuild, args, { encoding: "utf-8" });
+    if (res.status !== 0) {
+       console.error(`esbuild failed for ${options.entrypoints[0]}: ${res.stderr}`);
+       throw new Error(`esbuild failed: ${res.stderr}`);
+    }
+    return {
+      success: true,
+      outputs: [{ text: async () => res.stdout }],
+    };
+  },
 };
 
 let start = performance.now();
@@ -104,7 +158,12 @@ const bunRepoRoot = path.join(CMAKE_BUILD_ROOT, "..", "..");
 const bundledEntryPoints: string[] = [];
 for (let i = 0; i < nativeStartIndex; i++) {
   try {
-    const file = path.join(BASE, moduleList[i]);
+    const entry = moduleList[i];
+    if (!entry) continue;
+    const file = path.join(BASE, entry);
+    if (fs.statSync(file).isDirectory()) {
+       continue;
+    }
     let input = fs.readFileSync(file, "utf8");
 
     if (!/\bexport\s+(?:function|class|const|default|{)/.test(input)) {
@@ -232,22 +291,15 @@ const config_cli = [
   "--format=esm",
   ...(debug ? [] : ["--minify-syntax"]),
   "--platform=node",
-  "--outfile=" + path.join(CODEGEN_DIR, "WebCoreJSBuiltins.js"), // dummy outfile
-];
-// wait, bun build has different args than esbuild.
-// bundle-modules expects bun build to output things to the console?
-// actually it uses --outfile.
-  ...builtinModules.map(x => ["--external", x]).flat(),
+  ...builtinModules.map(x => [`--external:${x}`]).flat(),
   ...Object.keys(define)
-    .map(x => [`--define`, `${x}=${define[x]}`])
+    .map(x => [`--define:${x}=${define[x]}`])
     .flat(),
-  "--define",
-  `IS_BUN_DEVELOPMENT=${String(!!debug)}`,
-  "--define",
-  `__intrinsic__debug=${debug ? "$debug_log_enabled" : "false"}`,
-  "--outdir",
-  path.join(TMP_DIR, "modules_out"),
+  `--define:IS_BUN_DEVELOPMENT=${String(!!debug)}`,
+  `--define:__intrinsic__debug=${debug ? "$debug_log_enabled" : "false"}`,
+  `--outdir=${path.join(TMP_DIR, "modules_out")}`,
 ];
+console.log(`[debug] config_cli: ${config_cli.join(" ")}`);
 verbose("running: ", config_cli);
 const proc = spawnSync(config_cli[0], config_cli.slice(1), {
   cwd: process.cwd(),
@@ -507,7 +559,7 @@ writeIfNotChanged(
 writeIfNotChanged(path.join(CODEGEN_DIR, "GeneratedJS2Native.h"), getJS2NativeCPP());
 
 // zig will complain if this file is outside of the module
-const js2nativeZigPath = path.join(import.meta.dir, "../bun.js/bindings/GeneratedJS2Native.zig");
+const js2nativeZigPath = path.join(import.meta.dirname || (import.meta as any).dir, "../bun.js/bindings/GeneratedJS2Native.zig");
 writeIfNotChanged(js2nativeZigPath, getJS2NativeZig(js2nativeZigPath));
 
 const generatedDTSPath = path.join(CODEGEN_DIR, "generated.d.ts");
@@ -557,7 +609,8 @@ declare module "module" {
 }
 `;
 
-    for (const [name] of jsclasses) {
+    const actualJsClasses = (jsclasses as any).default || jsclasses;
+    for (const [name] of actualJsClasses) {
       dts += `\ndeclare function $inherits${name}(value: any): value is ${name};`;
     }
 

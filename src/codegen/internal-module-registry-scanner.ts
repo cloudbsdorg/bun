@@ -21,8 +21,12 @@ export function createInternalModuleRegistry(basedir: string) {
           ? "internal/"
           : undefined;
     if (prefix) {
-      const id = prefix + moduleList[i].slice(prefix.length).replaceAll(".", "/").slice(0, -3);
+      const id = prefix + moduleList[i].slice(prefix.length).replace(/\.ts$|\.js$/, "");
       internalRegistry.set(id, i);
+      if (id.includes(".")) {
+        const alt = id.replaceAll(".", "/");
+        internalRegistry.set(alt, i);
+      }
     }
   }
 
@@ -73,7 +77,8 @@ export function createInternalModuleRegistry(basedir: string) {
       'Only files in "src/js" besides "src/js/builtins" can be imported here. Note that the "node:" or "bun:" prefix is required here.';
 
     if (relativeMatch) {
-      const found = moduleList.indexOf(path.relative(basedir, relativeMatch).replaceAll("\\", "/"));
+      const rel = path.relative(basedir, relativeMatch).replaceAll("\\", "/");
+      const found = moduleList.indexOf(rel);
       if (found === -1) {
         throw new Error(
           `Builtin Bundler: "${specifier}" cannot be imported from "${from}" because it doesn't get a module ID. ${suffix}`,

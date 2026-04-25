@@ -56,15 +56,27 @@ export async function downloadWithRetry(url: string, dest: string, logPrefix: st
 
     const tmpPath = `${dest}.${process.pid}.partial`;
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "bun-build-system" } });
-      if (!res.ok || res.body === null) {
-        lastError = new BuildError(`HTTP ${res.status} ${res.statusText} for ${url}`);
-        continue;
-      }
+      if (process.platform === "freebsd") {
+        console.log(`[debug] Downloading ${url} via curl`);
+        const result = spawnSync("curl", ["-L", "-o", tmpPath, "-H", "User-Agent: bun-build-system", url], {
+           stdio: "inherit"
+        });
+        if (result.status !== 0) {
+           lastError = new BuildError(`curl failed with status ${result.status} for ${url}`);
+           continue;
+        }
+      } else {
+        console.log(`[debug] Downloading ${url}`);
+        const res = await fetch(url, { headers: { "User-Agent": "bun-build-system" } });
+        if (!res.ok || res.body === null) {
+          lastError = new BuildError(`HTTP ${res.status} ${res.statusText} for ${url}`);
+          continue;
+        }
 
-      // Cast: DOM ReadableStream vs node:stream/web ReadableStream — same
-      // shape at runtime, different TS lib declarations.
-      await pipeline(Readable.fromWeb(res.body as unknown as NodeWebReadable), createWriteStream(tmpPath));
+        // Cast: DOM ReadableStream vs node:stream/web ReadableStream — same
+        // shape at runtime, different TS lib declarations.
+        await pipeline(Readable.fromWeb(res.body as unknown as NodeWebReadable), createWriteStream(tmpPath));
+      }
       await rename(tmpPath, dest);
       return;
     } catch (err) {

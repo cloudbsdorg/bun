@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Updates the vendored uucode library and regenerates grapheme tables.
 #
 # Usage:

@@ -54,8 +54,10 @@ export { bunExeName, shouldStrip };
 function systemLibs(cfg: Config): string[] {
   const libs: string[] = [];
 
-  if (cfg.linux) {
-    libs.push("-lc", "-lpthread", "-ldl");
+  if (cfg.linux || cfg.freebsd) {
+    libs.push("-lc", "-lpthread");
+    if (cfg.linux) libs.push("-ldl");
+
     // libatomic: static by default (CI distros ship it), dynamic on Arch-like.
     // The static path needs to be the actual file path for lld to find it;
     // dynamic uses -l syntax. We emit what CMake does: bare libatomic.a gets
@@ -65,7 +67,7 @@ function systemLibs(cfg: Config): string[] {
     } else {
       libs.push("-latomic");
     }
-    // Linux local WebKit: link system ICU (prebuilt bundles its own).
+    // Linux/FreeBSD local WebKit: link system ICU (prebuilt bundles its own).
     // Assumes system ICU is in default lib paths — true on most distros.
     if (cfg.webkit === "local") {
       libs.push("-licudata", "-licui18n", "-licuuc");

@@ -220,7 +220,7 @@ pub fn mergeCoverageFragments(paths: []const []const u8, opts: *TestCommand.Code
         sep(console, max_len, enable_colors);
         console.writeAll("File") catch {};
         console.splatByteAll(' ', max_len - "File".len + 1) catch {};
-        console.writeAll(Output.prettyFmt(" <d>|<r> % Funcs <d>|<r> % Lines <d>|<r> Uncovered Line #s\n", enable_colors)) catch {};
+        console.writeAll(Output.prettyFmt(" <d>|<r> % Funcs <d>|<r> % Lines <d>|<r> Uncovered Line @"s"\n", enable_colors)) catch {};
         sep(console, max_len, enable_colors);
 
         var body = std.Io.Writer.Allocating.init(arena);

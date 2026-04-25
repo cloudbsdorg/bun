@@ -373,12 +373,12 @@ pub fn generateMarkdown(allocator: std.mem.Allocator, metafile_json: []const u8)
 
     // Table of Contents for easy navigation
     try writer.writeAll("## Table of Contents\n\n");
-    try writer.writeAll("- [Quick Summary](#quick-summary)\n");
-    try writer.writeAll("- [Largest Modules by Output Contribution](#largest-modules-by-output-contribution)\n");
-    try writer.writeAll("- [Entry Point Analysis](#entry-point-analysis)\n");
-    try writer.writeAll("- [Dependency Chains](#dependency-chains)\n");
-    try writer.writeAll("- [Full Module Graph](#full-module-graph)\n");
-    try writer.writeAll("- [Raw Data for Searching](#raw-data-for-searching)\n\n");
+    try writer.writeAll("- [Quick Summary](@"quick"-summary)\n");
+    try writer.writeAll("- [Largest Modules by Output Contribution](@"largest"-modules-by-output-contribution)\n");
+    try writer.writeAll("- [Entry Point Analysis](@"entry"-point-analysis)\n");
+    try writer.writeAll("- [Dependency Chains](@"dependency"-chains)\n");
+    try writer.writeAll("- [Full Module Graph](@"full"-module-graph)\n");
+    try writer.writeAll("- [Raw Data for Searching](@"raw"-data-for-searching)\n\n");
     try writer.writeAll("---\n\n");
 
     // ==================== SUMMARY ====================

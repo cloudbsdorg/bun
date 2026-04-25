@@ -1007,9 +1007,9 @@ pub const FontHandler = struct {
 const SYSTEM_UI: FontFamily = FontFamily{ .generic = .@"system-ui" };
 
 const DEFAULT_SYSTEM_FONTS: []const []const u8 = &.{
-    // #1: Supported as the '-apple-system' value (macOS, Safari >= 9.2 < 11, Firefox >= 43)
+    // @"1": Supported as the '-apple-system' value (macOS, Safari >= 9.2 < 11, Firefox >= 43)
     "-apple-system",
-    // #2: Supported as the 'BlinkMacSystemFont' value (macOS, Chrome < 56)
+    // @"2": Supported as the 'BlinkMacSystemFont' value (macOS, Chrome < 56)
     "BlinkMacSystemFont",
     "Segoe UI", // Windows >= Vista
     "Roboto", // Android >= 4

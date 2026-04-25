@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
+import assert from "node:assert";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { argParse, writeIfNotChanged } from "./helpers";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = import.meta.dirname || dirname(fileURLToPath(import.meta.url));
 
 // arg parsing
 let { "codegen-root": codegenRoot, debug, ...rest } = argParse(["codegen-root", "debug"]);
@@ -67,8 +68,12 @@ async function bundle(options: any) {
 
   if (options.drop) {
     for (const drop of options.drop) {
-      args.push(`--drop:${drop.toLowerCase()}`);
+      args.push(`--define:${drop}=false`);
     }
+  }
+
+  if (options.target === "bun" || options.target === "node") {
+    args.push("--platform=node");
   }
 
   const result = spawnSync(esbuild, args, { encoding: "utf-8" });

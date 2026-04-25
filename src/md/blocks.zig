@@ -176,7 +176,7 @@ pub fn analyzeLine(self: *Parser, off_start: OFF, p_end: *OFF, pivot_line: *cons
                     self.html_block_type = 0;
                 }
 
-                // md4c issue #6: Track empty list items that start with 2+ blank lines.
+                // md4c issue @"6": Track empty list items that start with 2+ blank lines.
                 // A list item can begin with at most one blank line.
                 if (n_parents > 0 and self.containers.items[n_parents - 1].ch != '>' and
                     n_brothers + n_children == 0 and self.current_block == null and
@@ -195,7 +195,7 @@ pub fn analyzeLine(self: *Parser, off_start: OFF, p_end: *OFF, pivot_line: *cons
             break;
         } else {
             // Non-blank line: check if we need to force-close an empty list item
-            // (second half of md4c issue #6 hack)
+            // (second half of md4c issue @"6" hack)
             if (self.last_list_item_starts_with_two_blank_lines) {
                 if (n_parents > 0 and n_parents == self.n_containers and
                     self.containers.items[n_parents - 1].ch != '>' and

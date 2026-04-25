@@ -1,6 +1,6 @@
-import * as fs from "fs";
-import * as Module from "module";
-import { basename, extname } from "path";
+import * as fs from "node:fs";
+import * as Module from "node:module";
+import { basename, extname } from "node:path";
 
 const allFiles = fs.readdirSync(".").filter(f => f.endsWith(".js"));
 const outdir = process.argv[2];
@@ -32,7 +32,7 @@ for (let fileIndex = 0; fileIndex < allFiles.length; fileIndex++) {
 
   // Create the build command with all the specified options
   const buildCommand =
-    Bun.$`bun build --define=process.env.NODE_DEBUG:"false" --define=process.env.READABLE_STREAM="'enable'" --define=global:globalThis --outdir=${outdir} ${name} --minify-syntax --minify-whitespace --format=${name.includes("stream") ? "cjs" : "esm"} --target=node ${{ raw: externalModules }}`.text();
+    Bun.$`bun build --define:process.env.NODE_DEBUG="false" --define:process.env.READABLE_STREAM="'enable'" --define:global=globalThis --outdir=${outdir} ${name} --minify-syntax --minify-whitespace --format=${name.includes("stream") ? "cjs" : "esm"} --target=node ${{ raw: externalModules }}`.text();
 
   commands.push(
     buildCommand.then(async text => {

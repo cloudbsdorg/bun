@@ -190,7 +190,7 @@ pub const MachoFile = struct {
                 // template's existing __BUN slot): the template may have been signed
                 // with a different page size / identifier / blob set, so its
                 // `cs.datasize` can be smaller than what `sign()` will produce, which
-                // the trailing truncation in `sign()` then chops (issue #29120).
+                // the trailing truncation in `sign()` then chops (issue @"29120").
                 const new_sig_dataoff: u64 = cs.dataoff + @as(u64, @intCast(size_diff));
                 const new_sig_size = MachoSigner.computeSignatureSize(new_sig_dataoff);
 

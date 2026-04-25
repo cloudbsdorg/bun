@@ -33,7 +33,9 @@
 #define LIBUS_SOCKET_READABLE 1
 #define LIBUS_SOCKET_WRITABLE 2
 
+#if defined(__APPLE__)
 #include <mach/mach.h>
+#endif
 #endif
 
 struct us_loop_t {
@@ -61,8 +63,12 @@ struct us_loop_t {
     /* The list of ready polls */
 #ifdef LIBUS_USE_EPOLL
     alignas(LIBUS_EXT_ALIGNMENT) struct epoll_event ready_polls[1024];
+#elif defined(__APPLE__)
+#define LIBUS_KEVENT struct kevent64_s
+    alignas(LIBUS_EXT_ALIGNMENT) LIBUS_KEVENT ready_polls[1024];
 #else
-    alignas(LIBUS_EXT_ALIGNMENT) struct kevent64_s ready_polls[1024];
+#define LIBUS_KEVENT struct kevent
+    alignas(LIBUS_EXT_ALIGNMENT) LIBUS_KEVENT ready_polls[1024];
 #endif
 };
 

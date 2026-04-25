@@ -157,10 +157,10 @@ fn getRuntimeSourceComptime(comptime target: options.Target) RuntimeSource {
         //
         // > This fallback "require" function exists so that "typeof require" can
         // > naturally be "function" even in non-CommonJS environments since esbuild
-        // > emulates a CommonJS environment (issue #1202). However, people want this
+        // > emulates a CommonJS environment (issue @"1202"). However, people want this
         // > shim to fall back to "globalThis.require" even if it's defined later
         // > (including property accesses such as "require.resolve") so we need to
-        // > use a proxy (issue #1614).
+        // > use a proxy (issue @"1614").
         //
         // When bundling to node, esbuild picks this code path as well, but `globalThis.require`
         // is not always defined there. The `createRequire` call approach is more reliable.

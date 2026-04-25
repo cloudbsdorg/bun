@@ -21,10 +21,10 @@ pub const namespace_export_part_index = 0;
 // [ ] 1a. *Expr, *Stmt, *Binding something something dynamic dispatch
 // [ ] 2.  *Data
 // [x] 3.  Data.(*) (The union value in Data is a pointer)
-// I chose #3 mostly for code simplification -- sometimes, the data is modified in-place.
+// I chose @"3" mostly for code simplification -- sometimes, the data is modified in-place.
 // But also it uses the least memory.
 // Since Data is a union, the size in bytes of Data is the max of all types
-// So with #1 or #2, if S.Function consumes 768 bits, that means Data must be >= 768 bits
+// So with @"1" or @"2", if S.Function consumes 768 bits, that means Data must be >= 768 bits
 // Which means "true" in code now takes up over 768 bits, probably more than what v8 spends
 // Instead, this approach means Data is the size of a pointer.
 // It's not really clear which approach is best without benchmarking it.

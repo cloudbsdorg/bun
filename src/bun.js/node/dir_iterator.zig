@@ -51,7 +51,7 @@ pub fn NewIterator(comptime use_windows_ospath: bool) type {
             /// with subsequent calls to `next`, as well as when this `Dir` is deinitialized.
             pub const next = switch (builtin.os.tag) {
                 .macos, .ios => nextDarwin,
-                // .freebsd, .netbsd, .dragonfly, .openbsd => nextBsd,
+                .freebsd, .netbsd, .dragonfly, .openbsd => nextBsd,
                 // .solaris => nextSolaris,
                 else => @compileError("unimplemented"),
             };
@@ -125,6 +125,9 @@ pub fn NewIterator(comptime use_windows_ospath: bool) type {
                         },
                     };
                 }
+            }
+            fn nextBsd(self: *Self) Result {
+                return nextDarwin(self);
             }
         },
         .linux => struct {

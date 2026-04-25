@@ -160,7 +160,7 @@ pub const State = opaque {
     /// Define preprocessor symbol 'sym'. value can be NULL, sym can be "sym=val"
     ///
     /// ```c
-    /// #define sym value
+    /// @"define" sym value
     /// ```
     pub fn defineSymbol(s: *State, sym: [:0]const u8, value: [:0]const u8) void {
         tcc_define_symbol(s, sym.ptr, value.ptr);
@@ -199,7 +199,7 @@ pub const State = opaque {
     /// Undefine preprocess symbol 'sym'
     ///
     /// ```c
-    /// #undef sym
+    /// @"undef" sym
     /// ```
     pub fn undefineSymbol(s: *State, sym: [:0]const u8) void {
         tcc_undefine_symbol(s, sym.ptr);

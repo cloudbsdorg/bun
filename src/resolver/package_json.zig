@@ -1356,7 +1356,7 @@ pub const ESModule = struct {
         /// When a package path is explicitly set to null, that means it's not exported.
         PackagePathDisabled,
 
-        // The internal #import specifier was not found
+        // The internal @"import" specifier was not found
         PackageImportNotDefined,
 
         PackageResolve,

@@ -141,7 +141,7 @@ pub fn IntegerBitSet(comptime size: u16) type {
         /// Removes a specific bit from the bit set
         pub fn unset(self: *Self, index: usize) void {
             if (comptime Environment.allow_assert) bun.assert(index < bit_length);
-            // Workaround for #7953
+            // Workaround for @"7953"
             if (MaskInt == u0) return;
             self.mask &= ~maskBit(index);
         }

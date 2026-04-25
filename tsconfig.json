@@ -5,7 +5,12 @@
     "noEmit": true,
     "skipLibCheck": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "bindgen": ["./src/codegen/bindgen-lib.ts"],
+      "bindgenv2": ["./src/codegen/bindgenv2/lib.ts"]
+    }
   },
   "references": [
     { "path": "./src" },

@@ -127,7 +127,7 @@ pub const CssColor = union(enum) {
                         try dest.writeFmt("#{x:0>6}", .{hex});
                     }
                 } else {
-                    // If the #rrggbbaa syntax is not supported by the browser targets, output rgba()
+                    // If the @"rrggbbaa" syntax is not supported by the browser targets, output rgba()
                     if (dest.targets.shouldCompileSame(.hex_alpha_colors)) {
                         // If the browser doesn't support `#rrggbbaa` color syntax, it is converted to `transparent` when compressed(minify = true).
                         // https://www.w3.org/TR/css-color-4/#transparent-black

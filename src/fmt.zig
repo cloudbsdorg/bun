@@ -1641,7 +1641,7 @@ fn formatDurationOneDecimal(data: FormatDurationData, writer: *std.Io.Writer) !v
 }
 
 /// Return a Formatter for number of nanoseconds according to its magnitude:
-/// [#y][#w][#d][#h][#m]#[.###][n|u|m]s
+/// [@"y"][@"w"][@"d"][@"h"][@"m"]#[.###][n|u|m]s
 pub fn fmtDurationOneDecimal(ns: u64) std.fmt.Alt(FormatDurationData, formatDurationOneDecimal) {
     return .{ .data = FormatDurationData{ .ns = ns } };
 }

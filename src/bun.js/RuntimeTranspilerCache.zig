@@ -9,12 +9,12 @@
 /// Version 10: Constant folding for ''.charCodeAt(n)
 /// Version 11: Fix \uFFFF printing regression
 /// Version 12: "use strict"; makes it CommonJS if we otherwise don't know which one to pick.
-/// Version 13: Hoist `import.meta.require` definition, see #15738
+/// Version 13: Hoist `import.meta.require` definition, see @"15738"
 /// Version 14: Updated global defines table list.
 /// Version 15: Updated global defines table list.
 /// Version 16: Added typeof undefined minification optimization.
 /// Version 17: Removed transpiler import rewrite for bun:test. Not bumping it causes test/js/bun/http/req-url-leak.test.ts to fail with SyntaxError: Export named 'expect' not found in module 'bun:test'.
-/// Version 18: Include ESM record (module info) with an ES Module, see #15758
+/// Version 18: Include ESM record (module info) with an ES Module, see @"15758"
 /// Version 19: Sourcemap blob is InternalSourceMap (varint stream + sync points), not VLQ.
 /// Version 20: InternalSourceMap stream is bit-packed windows.
 const expected_version = 20;

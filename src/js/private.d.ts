@@ -8,7 +8,7 @@ type BunWatchListener<T> = (event: WatchEventType, filename: T | undefined) => v
 /**
  * If this is not tree-shaken away, the bundle will fail.
  */
-declare function $bundleError(...message: any[]): never;
+declare function throw new Error(...message: any[]): never;
 
 declare module "bun" {
   namespace SQL.__internal {

@@ -241,7 +241,7 @@ pub fn processInlineContent(self: *Parser, content: []const u8, base_off: OFF) P
         // Note: Strikethrough (~) is handled above via the resolved delimiter system
 
         // Permissive autolinks: detect URL, email, and WWW autolinks
-        // Suppress inside explicit links to avoid double-wrapping (md4c issue #152)
+        // Suppress inside explicit links to avoid double-wrapping (md4c issue @"152")
         if (self.link_nesting_level == 0 and
             ((c == ':' and self.flags.permissive_url_autolinks) or
                 (c == '@' and self.flags.permissive_email_autolinks) or

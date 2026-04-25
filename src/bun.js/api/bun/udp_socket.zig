@@ -22,7 +22,7 @@ fn onRecvError(socket: *uws.udp.Socket, errno: c_int) callconv(.c) void {
     jsc.markBinding(@src());
 
     // Only called on Linux via IP_RECVERR — loop.c guards the recv-on-error
-    // path with #if defined(__linux__) to preserve the pre-existing
+    // path with @"if" defined(__linux__) to preserve the pre-existing
     // close-on-error behavior on kqueue/Windows (where an error event is a
     // fatal socket condition, not a drainable error queue). Builds a
     // SystemError from the ICMP errno (ECONNREFUSED, EHOSTUNREACH,
@@ -767,7 +767,7 @@ pub const UDPSocket = struct {
                                 }
                             }
                         }
-                        // "an invalid Scope gets turned into #0 (default selection)"
+                        // "an invalid Scope gets turned into @"0" (default selection)"
                         // (test-dgram-multicast-set-interface.js)
                         break :blk 0;
                     };

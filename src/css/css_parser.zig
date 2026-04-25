@@ -6851,7 +6851,7 @@ pub const serializer = struct {
     //     }
 
     //     if (value == 0.0 and signfns.isSignNegative(value)) {
-    //         // Negative zero. Work around #20596.
+    //         // Negative zero. Work around @"20596".
     //         try writer.writeAll("-0");
     //         if (int_value == null and @mod(value, 1) == 0) {
     //             try writer.writeAll(".0");
@@ -6870,7 +6870,7 @@ pub const serializer = struct {
         }
 
         const notation: Notation = if (value == 0.0 and std.math.signbit(value)) notation: {
-            // Negative zero. Work around #20596.
+            // Negative zero. Work around @"20596".
             try writer.writeAll("-0");
             break :notation Notation{
                 .decimal_point = false,

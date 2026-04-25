@@ -1054,7 +1054,7 @@ pub const PackageManifest = struct {
             defer buffer.deinit();
             const writer = &buffer.writer();
             try Serializer.write(this, scope, @TypeOf(writer), writer);
-            // --- Perf Improvement #1 ----
+            // --- Perf Improvement @"1" ----
             // Do not forget to buffer writes!
             //
             // PS C:\bun> hyperfine "bun-debug install --ignore-scripts" "bun install --ignore-scripts" --prepare="del /s /q bun.lockb && del /s /q C:\Users\window\.bun\install\cache"
@@ -1071,7 +1071,7 @@ pub const PackageManifest = struct {
             // Summary
             //   bun-debug install --ignore-scripts ran
             //     2.53 ± 0.57 times faster than bun install --ignore-scripts
-            // --- Perf Improvement #2 ----
+            // --- Perf Improvement @"2" ----
             // GetFinalPathnameByHandle is very expensive if called many times
             // We skip calling it when we are giving an absolute file path.
             // This needs many more call sites, doesn't have much impact on this location.
@@ -1140,17 +1140,17 @@ pub const PackageManifest = struct {
                 try bun.sys.renameat(bun.FD.cwd(), path_to_use_for_opening_file, bun.FD.cwd(), cache_path_abs).unwrap();
             } else if (Environment.isLinux and is_using_o_tmpfile) {
                 defer file.close();
-                // Attempt #1.
+                // Attempt @"1".
                 bun.sys.linkatTmpfile(file.handle, cache_dir, outpath).unwrap() catch {
-                    // Attempt #2: the file may already exist. Let's unlink and try again.
+                    // Attempt @"2": the file may already exist. Let's unlink and try again.
                     bun.sys.unlinkat(cache_dir, outpath).unwrap() catch {};
                     try bun.sys.linkatTmpfile(file.handle, cache_dir, outpath).unwrap();
 
-                    // There is no attempt #3. This is a cache, so it's not essential.
+                    // There is no attempt @"3". This is a cache, so it's not essential.
                 };
             } else {
                 defer file.close();
-                // Attempt #1. Rename the file.
+                // Attempt @"1". Rename the file.
                 const rc = bun.sys.renameat(.fromStdDir(tmpdir), tmp_path, cache_dir, outpath);
 
                 switch (rc) {

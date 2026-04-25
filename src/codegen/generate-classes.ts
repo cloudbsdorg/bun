@@ -1,6 +1,7 @@
 // @ts-nocheck
 import path from "path";
-import jsclasses from "./../bun.js/bindings/js_classes";
+import { pathToFileURL } from "node:url";
+import jsclasses from "./../bun.js/bindings/js_classes.ts";
 import { InvalidThisBehavior, type ClassDefinition, type Field } from "./class-definitions";
 import { camelCase, pascalCase, writeIfNotChanged } from "./helpers";
 
@@ -2658,12 +2659,13 @@ const GENERATED_CLASSES_IMPL_FOOTER = `
 `;
 
 function jsInheritsCppImpl() {
+  const actualJsClasses = jsclasses.default || jsclasses;
   return `
-${jsclasses
-  .map(v => v[1])
-  .filter(v => v?.length > 0)
-  .map((v, i) => `#include "${v}"`)
-  .join("\n")}
+${actualJsClasses
+    .map(v => v[1])
+    .filter(v => v?.length > 0)
+    .map((v, i) => `#include "${v}"`)
+    .join("\n")}
 
 JSC_DEFINE_HOST_FUNCTION(Zig::jsFunctionInherits, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
 {
@@ -2672,7 +2674,7 @@ JSC_DEFINE_HOST_FUNCTION(Zig::jsFunctionInherits, (JSC::JSGlobalObject * globalO
     if (!value.isCell()) return JSValue::encode(jsBoolean(false));
     auto cell = value.asCell();
     switch (id) {
-${jsclasses
+${actualJsClasses
   .map(v => v[0])
   .map((v, i) => `    case ${i}: return JSValue::encode(jsBoolean(jsDynamicCast<WebCore::JS${v}*>(cell) != nullptr));`)
   .join("\n")}
@@ -2769,7 +2771,7 @@ const classes: ClassDefinition[] = [];
   let errors = [];
   for (const file of files) {
     const filepath = path.resolve(file);
-    const result = require(filepath);
+    const result = (typeof (import.meta as any).require === "function" ? (import.meta as any).require(filepath) : await import(pathToFileURL(filepath).href));
     if (!(result?.default?.length ?? 0)) {
       errors.push(
         new TypeError(

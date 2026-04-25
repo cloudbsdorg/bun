@@ -1583,7 +1583,7 @@ pub fn DMP(comptime Unit: type) type {
         test diffHalfMatch {
             const one_timeout: DiffMatchPatch = .{ .config = .{ .diff_timeout = 1 } };
 
-            // No match #1
+            // No match @"1"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "1234567890",
@@ -1591,7 +1591,7 @@ pub fn DMP(comptime Unit: type) type {
                 .expected = null,
             }});
 
-            // No match #2
+            // No match @"2"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "12345",
@@ -1613,7 +1613,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Single Match #2
+            // Single Match @"2"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "a345678z",
@@ -1627,7 +1627,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Single Match #3
+            // Single Match @"3"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "abc56789z",
@@ -1641,7 +1641,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Single Match #4
+            // Single Match @"4"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "a23456xyz",
@@ -1655,7 +1655,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Multiple matches #1
+            // Multiple matches @"1"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "121231234123451234123121",
@@ -1669,7 +1669,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Multiple Matches #2
+            // Multiple Matches @"2"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "x-=-=-=-=-=-=-=-=-=-=-=-=",
@@ -1683,7 +1683,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Multiple Matches #3
+            // Multiple Matches @"3"
             try checkAllAllocationFailures(testing.allocator, testDiffHalfMatch, .{.{
                 .dmp = one_timeout,
                 .before = "-=-=-=-=-=-=-=-=-=-=-=-=y",
@@ -1733,9 +1733,9 @@ pub fn DMP(comptime Unit: type) type {
             try tmp_array_list.append(allocator, "beta\n");
 
             var result = try diffLinesToChars(allocator, "alpha\nbeta\nalpha\n", "beta\nalpha\nbeta\n");
-            try testing.expectEqualStrings("\u{0001}\u{0002}\u{0001}", result.chars_1); // Shared lines #1
-            try testing.expectEqualStrings("\u{0002}\u{0001}\u{0002}", result.chars_2); // Shared lines #2
-            try testing.expectEqualDeep(tmp_array_list.items, result.line_array.items); // Shared lines #3
+            try testing.expectEqualStrings("\u{0001}\u{0002}\u{0001}", result.chars_1); // Shared lines @"1"
+            try testing.expectEqualStrings("\u{0002}\u{0001}\u{0002}", result.chars_2); // Shared lines @"2"
+            try testing.expectEqualDeep(tmp_array_list.items, result.line_array.items); // Shared lines @"3"
 
             tmp_array_list.clearRetainingCapacity();
             try tmp_array_list.append(allocator, "");
@@ -1745,9 +1745,9 @@ pub fn DMP(comptime Unit: type) type {
             result.deinit(allocator);
 
             result = try diffLinesToChars(allocator, "", "alpha\r\nbeta\r\n\r\n\r\n");
-            try testing.expectEqualStrings("", result.chars_1); // Empty string and blank lines #1
-            try testing.expectEqualStrings("\u{0001}\u{0002}\u{0003}\u{0003}", result.chars_2); // Empty string and blank lines #2
-            try testing.expectEqualDeep(tmp_array_list.items, result.line_array.items); // Empty string and blank lines #3
+            try testing.expectEqualStrings("", result.chars_1); // Empty string and blank lines @"1"
+            try testing.expectEqualStrings("\u{0001}\u{0002}\u{0003}\u{0003}", result.chars_2); // Empty string and blank lines @"2"
+            try testing.expectEqualDeep(tmp_array_list.items, result.line_array.items); // Empty string and blank lines @"3"
 
             tmp_array_list.clearRetainingCapacity();
             try tmp_array_list.append(allocator, "");
@@ -1756,9 +1756,9 @@ pub fn DMP(comptime Unit: type) type {
             result.deinit(allocator);
 
             result = try diffLinesToChars(allocator, "a", "b");
-            try testing.expectEqualStrings("\u{0001}", result.chars_1); // No linebreaks #1.
-            try testing.expectEqualStrings("\u{0002}", result.chars_2); // No linebreaks #2.
-            try testing.expectEqualDeep(tmp_array_list.items, result.line_array.items); // No linebreaks #3.
+            try testing.expectEqualStrings("\u{0001}", result.chars_1); // No linebreaks @"1".
+            try testing.expectEqualStrings("\u{0002}", result.chars_2); // No linebreaks @"2".
+            try testing.expectEqualDeep(tmp_array_list.items, result.line_array.items); // No linebreaks @"3".
             result.deinit(allocator);
 
             // TODO: More than 256 to reveal any 8-bit limitations but this requires
@@ -1784,8 +1784,8 @@ pub fn DMP(comptime Unit: type) type {
                 try line_list.appendSlice(allocator, &.{ i, '\n' });
                 try char_list.append(allocator, i);
             }
-            try testing.expectEqual(@as(usize, n - 1), tmp_array_list.items.len); // Test initialization fail #1
-            try testing.expectEqual(@as(usize, n - 1), char_list.items.len); // Test initialization fail #2
+            try testing.expectEqual(@as(usize, n - 1), tmp_array_list.items.len); // Test initialization fail @"1"
+            try testing.expectEqual(@as(usize, n - 1), char_list.items.len); // Test initialization fail @"2"
             try tmp_array_list.insert(allocator, 0, "");
             result = try diffLinesToChars(allocator, line_list.items, "");
             defer result.deinit(allocator);
@@ -2412,7 +2412,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Simple case #1
+            // Simple case @"1"
             try checkAllAllocationFailures(testing.allocator, testDiff, .{.{
                 .dmp = this,
                 .before = "a",
@@ -2424,7 +2424,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Simple case #2
+            // Simple case @"2"
             try checkAllAllocationFailures(testing.allocator, testDiff, .{.{
                 .dmp = this,
                 .before = "Apples are a fruit.",
@@ -2439,7 +2439,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Simple case #3
+            // Simple case @"3"
             try checkAllAllocationFailures(testing.allocator, testDiff, .{.{
                 .dmp = this,
                 .before = "ax\t",
@@ -2454,7 +2454,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Overlap #1
+            // Overlap @"1"
             try checkAllAllocationFailures(testing.allocator, testDiff, .{.{
                 .dmp = this,
                 .before = "1ayb2",
@@ -2470,7 +2470,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Overlap #2
+            // Overlap @"2"
             try checkAllAllocationFailures(testing.allocator, testDiff, .{.{
                 .dmp = this,
                 .before = "abcy",
@@ -2483,7 +2483,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // Overlap #3
+            // Overlap @"3"
             try checkAllAllocationFailures(testing.allocator, testDiff, .{.{
                 .dmp = this,
                 .before = "ABCDa=bcd=efghijklmnopqrsEFGHIJKLMNOefg",
@@ -2657,7 +2657,7 @@ pub fn DMP(comptime Unit: type) type {
                 .expected = &[_]Diff{},
             }});
 
-            // No elimination #1
+            // No elimination @"1"
             try checkAllAllocationFailures(testing.allocator, testDiffCleanupSemantic, .{.{
                 .input = &.{
                     .{ .operation = .delete, .text = "ab" },
@@ -2673,7 +2673,7 @@ pub fn DMP(comptime Unit: type) type {
                 },
             }});
 
-            // No elimination #2
+            // No elimination @"2"
             try checkAllAllocationFailures(testing.allocator, testDiffCleanupSemantic, .{.{
                 .input = &.{
                     .{ .operation = .delete, .text = "abc" },

@@ -83,8 +83,8 @@ import_item_status: ImportItemStatus = ImportItemStatus.none,
 /// consider the following TypeScript code:
 ///
 ///   class Foo {
-///     #foo = 123
-///     bar = this.#foo
+///     @"foo" = 123
+///     bar = this.@"foo"
 ///   }
 ///
 /// If "useDefineForClassFields: false" is set in "tsconfig.json", then "bar"
@@ -93,26 +93,26 @@ import_item_status: ImportItemStatus = ImportItemStatus.none,
 ///
 ///   class Foo {
 ///     constructor() {
-///       this.#foo = 123;
-///       this.bar = this.#foo;
+///       this.@"foo" = 123;
+///       this.bar = this.@"foo";
 ///     }
-///     #foo;
+///     @"foo";
 ///   }
 ///
 /// However, we can't do the same for static fields:
 ///
 ///   class Foo {
-///     static #foo = 123
-///     static bar = this.#foo
+///     static @"foo" = 123
+///     static bar = this.@"foo"
 ///   }
 ///
 /// Compiling these static fields to something like this would be invalid:
 ///
 ///   class Foo {
-///     static #foo;
+///     static @"foo";
 ///   }
-///   Foo.#foo = 123;
-///   Foo.bar = Foo.#foo;
+///   Foo.@"foo" = 123;
+///   Foo.bar = Foo.@"foo";
 ///
 /// Thus "#foo" must be lowered even though it's supported. Another case is
 /// when we're converting top-level class declarations to class expressions
@@ -120,15 +120,15 @@ import_item_status: ImportItemStatus = ImportItemStatus.none,
 /// class body:
 ///
 ///   class Foo {
-///     static #foo = Foo
+///     static @"foo" = Foo
 ///   }
 ///
 /// This cannot be converted into something like this:
 ///
 ///   var Foo = class {
-///     static #foo;
+///     static @"foo";
 ///   };
-///   Foo.#foo = Foo;
+///   Foo.@"foo" = Foo;
 ///
 /// --- Not actually used yet -----------------------------------------------
 private_symbol_must_be_lowered: bool = false,

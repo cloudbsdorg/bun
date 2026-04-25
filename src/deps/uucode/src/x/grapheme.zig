@@ -46,7 +46,7 @@
 //!   be fullwidth (width 2), we treat them as width 1 for simplicity.
 //!
 //!   Rather than treat CJK contexts differently, we always choose East Asian
-//!   Width (UAX #11) Ambiguous width (A) as width 1. See
+//!   Width (UAX @"11") Ambiguous width (A) as width 1. See
 //!   `src/x/config_x/wcwidth.zig` for more info.
 //!
 
@@ -576,7 +576,7 @@ pub fn computeGraphemeBreakNoControl(
         }
 
         // The `emoji_modifier_sequence` case is described in the comment for
-        // `isExtend` above, from UTS #51.
+        // `isExtend` above, from UTS @"51".
         if (gb1 == .emoji_modifier_base and gb2 == .emoji_modifier) {
             state.* = .extended_pictographic;
             return false;
@@ -624,8 +624,8 @@ fn isIndicConjunctBreakExtend(gb: types_x.GraphemeBreakNoControl) bool {
 }
 
 // Despite `emoji_modifier` being `extend` according to
-// GraphemeBreakProperty.txt and UAX #29 (in addition to tests in
-// GraphemeBreakTest.txt), UTS #51 states: `emoji_modifier_sequence :=
+// GraphemeBreakProperty.txt and UAX @"29" (in addition to tests in
+// GraphemeBreakTest.txt), UTS @"51" states: `emoji_modifier_sequence :=
 // emoji_modifier_base emoji_modifier` in ED-13 (emoji modifier sequence) under
 // 1.4.4 (Emoji Modifiers), and: "When used alone, the default representation
 // of these modifier characters is a color swatch... To have an effect on an
@@ -633,7 +633,7 @@ fn isIndicConjunctBreakExtend(gb: types_x.GraphemeBreakNoControl) bool {
 // character." in 2.4 (Diversity). Additionally it states "Skin tone
 // modifiers and hair components should be
 // displayed even in isolation" in ED-20 (basic emoji set) under 1.4.6 (Emoji
-// Sets). See this revision of UAX #29 when the grapheme cluster break
+// Sets). See this revision of UAX @"29" when the grapheme cluster break
 // properties were simplified to remove `E_Base` and `E_Modifier`:
 // http://www.unicode.org/reports/tr29/tr29-32.html
 // Here we decide to diverge from the grapheme break spec, which is allowed
@@ -698,7 +698,7 @@ fn testGraphemeBreakNoControl(getActualIsBreak: fn (cp1: u21, cp2: u21, state: *
             var expected_is_break = std.mem.eql(u8, expected_str, "÷");
             const actual_is_break = getActualIsBreak(cp1, cp2, &state);
             try std.testing.expect(expected_is_break or std.mem.eql(u8, expected_str, "×"));
-            // GraphemeBreakTest.txt has tests for UAX #29 treating emoji
+            // GraphemeBreakTest.txt has tests for UAX @"29" treating emoji
             // modifier as extend, always, but we diverge from that (see
             // comment above `isExtend`).
             if (gb2 == .emoji_modifier and gb1 != .emoji_modifier_base) {

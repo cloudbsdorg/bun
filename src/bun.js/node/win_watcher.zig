@@ -200,7 +200,7 @@ pub const PathWatcher = struct {
         ).toError(.watch)) |err| {
             // `errdefer` doesn't fire on `return .{ .err = ... }` (that's a successful return of a
             // Maybe(T), not an error-union return). Clean up the map entry and the half-initialized
-            // watcher inline. See #26254.
+            // watcher inline. See @"26254".
             _ = manager.watchers.swapRemove(event_path);
             this.manager = null; // prevent deinit() from re-entering unregisterWatcher
             this.deinit();

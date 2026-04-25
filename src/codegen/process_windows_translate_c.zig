@@ -2,7 +2,7 @@
 // like `SetCurrentDirectory` since they are defined with an odd macro
 // that translate-c doesn't handle.
 //
-//     #define SetCurrentDirectory __MINGW_NAME_AW(SetCurrentDirectory)
+//     @"define" SetCurrentDirectory __MINGW_NAME_AW(SetCurrentDirectory)
 //
 // In these cases, it's better to just reference the underlying function
 // directly: SetCurrentDirectoryW. To make the error better, a post

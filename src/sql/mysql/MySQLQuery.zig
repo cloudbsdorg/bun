@@ -1,10 +1,10 @@
 const MySQLQuery = @This();
 
-#statement: ?*MySQLStatement = null,
-#query: bun.String,
+@"statement": ?*MySQLStatement = null,
+@"query": bun.String,
 
-#status: Status,
-#flags: packed struct(u8) {
+@"status": Status,
+@"flags": packed struct(u8) {
     bigint: bool = false,
     simple: bool = false,
     pipelined: bool = false,
@@ -38,7 +38,7 @@ fn bind(this: *MySQLQuery, execute: *PreparedStatement.Execute, globalObject: *J
         return error.InvalidQueryBinding;
     }
 
-    this.#status = .binding;
+    this.@"status" = .binding;
     execute.params = params;
 }
 
@@ -59,29 +59,29 @@ fn bindAndExecute(this: *MySQLQuery, writer: anytype, statement: *MySQLStatement
     try this.bind(&execute, globalObject, binding_value, columns_value);
     try execute.write(writer);
     try packet.end();
-    this.#status = .running;
+    this.@"status" = .running;
 }
 
 fn runSimpleQuery(this: *@This(), connection: *MySQLConnection) !void {
-    if (this.#status != .pending or !connection.canExecuteQuery()) {
+    if (this.@"status" != .pending or !connection.canExecuteQuery()) {
         debug("cannot execute query", .{});
         // cannot execute query
         return;
     }
-    var query_str = this.#query.toUTF8(bun.default_allocator);
+    var query_str = this.@"query".toUTF8(bun.default_allocator);
     defer query_str.deinit();
     const writer = connection.getWriter();
-    if (this.#statement == null) {
+    if (this.@"statement" == null) {
         const stmt = bun.new(MySQLStatement, .{
             .signature = Signature.empty(),
             .status = .parsing,
             .ref_count = .initExactRefs(1),
         });
-        this.#statement = stmt;
+        this.@"statement" = stmt;
     }
     try MySQLRequest.executeQuery(query_str.slice(), MySQLConnection.Writer, writer);
 
-    this.#status = .running;
+    this.@"status" = .running;
 }
 
 fn runPreparedQuery(
@@ -94,8 +94,8 @@ fn runPreparedQuery(
     var query_str: ?bun.ZigString.Slice = null;
     defer if (query_str) |str| str.deinit();
 
-    if (this.#statement == null) {
-        const query = this.#query.toUTF8(bun.default_allocator);
+    if (this.@"statement" == null) {
+        const query = this.@"query".toUTF8(bun.default_allocator);
         query_str = query;
         var signature = Signature.generate(globalObject, query.slice(), binding_value, columns_value) catch |err| {
             if (!globalObject.hasException())
@@ -114,7 +114,7 @@ fn runPreparedQuery(
                 // If the statement failed, we need to throw the error
                 return globalObject.throwValue(error_response);
             }
-            this.#statement = stmt;
+            this.@"statement" = stmt;
             stmt.ref();
             signature.deinit();
             signature = Signature{};
@@ -125,11 +125,11 @@ fn runPreparedQuery(
                 .status = .pending,
                 .statement_id = 0,
             });
-            this.#statement = stmt;
+            this.@"statement" = stmt;
             entry.value_ptr.* = stmt;
         }
     }
-    const stmt = this.#statement.?;
+    const stmt = this.@"statement".?;
     switch (stmt.status) {
         .failed => {
             debug("failed", .{});
@@ -146,7 +146,7 @@ fn runPreparedQuery(
                         return globalObject.throwValue(AnyMySQLError.mysqlErrorToJS(globalObject, "failed to bind and execute query", err));
                     return error.JSError;
                 };
-                this.#flags.pipelined = true;
+                this.@"flags".pipelined = true;
             }
         },
         .parsing => {
@@ -156,7 +156,7 @@ fn runPreparedQuery(
             if (connection.canPrepareQuery()) {
                 debug("prepareRequest", .{});
                 const writer = connection.getWriter();
-                const query = query_str orelse this.#query.toUTF8(bun.default_allocator);
+                const query = query_str orelse this.@"query".toUTF8(bun.default_allocator);
                 MySQLRequest.prepareRequest(query.slice(), MySQLConnection.Writer, writer) catch |err| {
                     return globalObject.throwError(err, "failed to prepare query");
                 };
@@ -169,9 +169,9 @@ fn runPreparedQuery(
 pub fn init(query: bun.String, bigint: bool, simple: bool) @This() {
     query.ref();
     return .{
-        .#query = query,
-        .#status = .pending,
-        .#flags = .{
+        .@"query" = query,
+        .@"status" = .pending,
+        .@"flags" = .{
             .bigint = bigint,
             .simple = simple,
         },
@@ -179,7 +179,7 @@ pub fn init(query: bun.String, bigint: bool, simple: bool) @This() {
 }
 
 pub fn runQuery(this: *@This(), connection: *MySQLConnection, globalObject: *JSGlobalObject, columns_value: JSValue, binding_value: JSValue) !void {
-    if (this.#flags.simple) {
+    if (this.@"flags".simple) {
         debug("runSimpleQuery", .{});
         return try this.runSimpleQuery(connection);
     }
@@ -193,64 +193,64 @@ pub fn runQuery(this: *@This(), connection: *MySQLConnection, globalObject: *JSG
 }
 
 pub inline fn setResultMode(this: *@This(), result_mode: SQLQueryResultMode) void {
-    this.#flags.result_mode = result_mode;
+    this.@"flags".result_mode = result_mode;
 }
 
 pub inline fn result(this: *@This(), is_last_result: bool) bool {
-    if (this.#status == .success or this.#status == .fail) return false;
-    this.#status = if (is_last_result) .success else .partial_response;
+    if (this.@"status" == .success or this.@"status" == .fail) return false;
+    this.@"status" = if (is_last_result) .success else .partial_response;
 
     return true;
 }
 pub fn fail(this: *@This()) bool {
-    if (this.#status == .fail or this.#status == .success) return false;
-    this.#status = .fail;
+    if (this.@"status" == .fail or this.@"status" == .success) return false;
+    this.@"status" = .fail;
 
     return true;
 }
 
 pub fn cleanup(this: *@This()) void {
-    if (this.#statement) |statement| {
+    if (this.@"statement") |statement| {
         statement.deref();
-        this.#statement = null;
+        this.@"statement" = null;
     }
-    var query = this.#query;
+    var query = this.@"query";
     defer query.deref();
-    this.#query = bun.String.empty;
+    this.@"query" = bun.String.empty;
 }
 
 pub inline fn isCompleted(this: *const @This()) bool {
-    return this.#status == .success or this.#status == .fail;
+    return this.@"status" == .success or this.@"status" == .fail;
 }
 pub inline fn isRunning(this: *const @This()) bool {
-    switch (this.#status) {
+    switch (this.@"status") {
         .running, .binding, .partial_response => return true,
         .success, .fail, .pending => return false,
     }
 }
 pub inline fn isPending(this: *const @This()) bool {
-    return this.#status == .pending;
+    return this.@"status" == .pending;
 }
 
 pub inline fn isBeingPrepared(this: *@This()) bool {
-    return this.#status == .pending and this.#statement != null and this.#statement.?.status == .parsing;
+    return this.@"status" == .pending and this.@"statement" != null and this.@"statement".?.status == .parsing;
 }
 
 pub inline fn isPipelined(this: *const @This()) bool {
-    return this.#flags.pipelined;
+    return this.@"flags".pipelined;
 }
 pub inline fn isSimple(this: *const @This()) bool {
-    return this.#flags.simple;
+    return this.@"flags".simple;
 }
 pub inline fn isBigintSupported(this: *const @This()) bool {
-    return this.#flags.bigint;
+    return this.@"flags".bigint;
 }
 pub inline fn getResultMode(this: *const @This()) SQLQueryResultMode {
-    return this.#flags.result_mode;
+    return this.@"flags".result_mode;
 }
 pub inline fn markAsPrepared(this: *@This()) void {
-    if (this.#status == .pending) {
-        if (this.#statement) |statement| {
+    if (this.@"status" == .pending) {
+        if (this.@"statement") |statement| {
             if (statement.status == .parsing and
                 statement.params.len == statement.params_received and
                 statement.statement_id > 0)
@@ -261,7 +261,7 @@ pub inline fn markAsPrepared(this: *@This()) void {
     }
 }
 pub inline fn getStatement(this: *const @This()) ?*MySQLStatement {
-    return this.#statement;
+    return this.@"statement";
 }
 
 const debug = bun.Output.scoped(.MySQLQuery, .visible);

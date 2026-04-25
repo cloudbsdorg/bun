@@ -21,6 +21,8 @@ import { readdirSync, rmSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import { sliceSourceCode } from "./builtin-parser";
 import { createAssertClientJS, createLogClientJS } from "./client-js";
 import { getJS2NativeDTS } from "./generate-js2native";
@@ -32,7 +34,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const Bun = {
   file: (p: string) => ({
     text: async () => readFileSync(p, "utf-8"),
+    arrayBuffer: async () => readFileSync(p).buffer,
   }),
+  write: async (p: string, content: string | Buffer | Uint8Array) => {
+    const dir = path.dirname(p);
+    if (!require("fs").existsSync(dir)) require("fs").mkdirSync(dir, { recursive: true });
+    writeFileSync(p, content);
+    return (content as any).length || 0;
+  },
+  sleep: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+  build: async (options: any) => {
+    const esbuild = path.join(__dirname, "../../node_modules/.bin/esbuild");
+    const args = [options.entrypoints[0], "--bundle", "--format=esm", "--target=esnext"];
+    if (options.minify) args.push("--minify");
+    const res = spawnSync(esbuild, args, { encoding: "utf-8" });
+    if (res.status !== 0) return { success: false, logs: [res.stderr] };
+    return {
+      success: true,
+      outputs: [{ text: async () => res.stdout }],
+    };
+  },
   env: process.env,
   spawn: (options: any) => {
     const res = spawnSync(options.cmd[0], options.cmd.slice(1), {
@@ -780,8 +801,9 @@ JSBuiltinInternalFunctions::JSBuiltinInternalFunctions(JSC::VM& vm) : m_vm(vm)
     `;
   // Handle builtin names
   {
+    const __dirname = import.meta.dirname || (import.meta as any).dir;
     const BunBuiltinNamesHeader = require("fs").readFileSync(
-      path.join(import.meta.dir, "../js/builtins/BunBuiltinNames.h"),
+      path.join(__dirname, "../js/builtins/BunBuiltinNames.h"),
       "utf8",
     );
     let definedBuiltinNamesStartI = BunBuiltinNamesHeader.indexOf(

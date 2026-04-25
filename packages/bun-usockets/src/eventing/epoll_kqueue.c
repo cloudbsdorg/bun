@@ -40,12 +40,38 @@ void us_loop_run_bun_tick(struct us_loop_t *loop, const struct timespec* timeout
 #define LIKELY(cond) __builtin_expect((_Bool)(cond), 1)
 #define UNLIKELY(cond) __builtin_expect((_Bool)(cond), 0)
 
+#ifndef LIBUS_USE_EPOLL
+#ifndef KEVENT_FLAG_IMMEDIATE
+#define KEVENT_FLAG_IMMEDIATE 0
+#endif
+#ifndef KEVENT_FLAG_ERROR_EVENTS
+#define KEVENT_FLAG_ERROR_EVENTS 0
+#endif
+
+#ifdef __APPLE__
+#define LIBUS_KEVENT_CALL(kq, changelist, nchanges, eventlist, nevents, flags, timeout) \
+    kevent64(kq, (const struct kevent64_s *)changelist, nchanges, (struct kevent64_s *)eventlist, nevents, flags, timeout)
+#define LIBUS_EV_SET(kevp, ident, filter, flags, fflags, data, udata) \
+    EV_SET64(kevp, ident, filter, flags, fflags, data, (uint64_t)udata, 0, 0)
+#else
+#define LIBUS_KEVENT_CALL(kq, changelist, nchanges, eventlist, nevents, flags, timeout) \
+    kevent(kq, (const struct kevent *)changelist, nchanges, (struct kevent *)eventlist, nevents, \
+           (flags & KEVENT_FLAG_IMMEDIATE) ? (&(struct timespec){0, 0}) : timeout)
+#define LIBUS_EV_SET(kevp, ident, filter, flags, fflags, data, udata) \
+    EV_SET(kevp, ident, filter, flags, fflags, data, (void *)udata)
+#endif
+#endif
+
 #ifdef LIBUS_USE_EPOLL
 #define GET_READY_POLL(loop, index) (struct us_poll_t *) loop->ready_polls[index].data.ptr
 #define SET_READY_POLL(loop, index, poll) loop->ready_polls[index].data.ptr = (void*)poll
 #else
 #define GET_READY_POLL(loop, index) (struct us_poll_t *) loop->ready_polls[index].udata
+#ifdef __APPLE__
 #define SET_READY_POLL(loop, index, poll) loop->ready_polls[index].udata = (uint64_t)poll
+#else
+#define SET_READY_POLL(loop, index, poll) loop->ready_polls[index].udata = (void *)poll
+#endif
 #endif
 
 /* Loop */
@@ -235,7 +261,11 @@ static void us_internal_dispatch_ready_polls(struct us_loop_t *loop) {
         const int16_t filter = loop->ready_polls[i].filter;
         const uint16_t flags = loop->ready_polls[i].flags;
         struct kevent_flags bits = {
+#ifdef __APPLE__
             .readable = (filter == EVFILT_READ || filter == EVFILT_TIMER || filter == EVFILT_MACHPORT),
+#else
+            .readable = (filter == EVFILT_READ || filter == EVFILT_TIMER),
+#endif
             .writable = (filter == EVFILT_WRITE),
             .error = !!(flags & EV_ERROR),
             .eof = !!(flags & EV_EOF),
@@ -298,7 +328,7 @@ static void us_internal_drain_ready_polls(struct us_loop_t *loop) {
         loop->num_ready_polls = bun_epoll_pwait2(loop->fd, loop->ready_polls, LIBUS_MAX_READY_POLLS, &zero);
 #else
         do {
-            loop->num_ready_polls = kevent64(loop->fd, NULL, 0, loop->ready_polls, LIBUS_MAX_READY_POLLS, KEVENT_FLAG_IMMEDIATE, NULL);
+            loop->num_ready_polls = LIBUS_KEVENT_CALL(loop->fd, NULL, 0, loop->ready_polls, LIBUS_MAX_READY_POLLS, KEVENT_FLAG_IMMEDIATE, NULL);
         } while (IS_EINTR(loop->num_ready_polls));
 #endif
         if (loop->num_ready_polls <= 0) {
@@ -323,7 +353,7 @@ void us_loop_run(struct us_loop_t *loop) {
         loop->num_ready_polls = bun_epoll_pwait2(loop->fd, loop->ready_polls, LIBUS_MAX_READY_POLLS, NULL);
 #else
         do {
-            loop->num_ready_polls = kevent64(loop->fd, NULL, 0, loop->ready_polls, LIBUS_MAX_READY_POLLS, 0, NULL);
+            loop->num_ready_polls = LIBUS_KEVENT_CALL(loop->fd, NULL, 0, loop->ready_polls, LIBUS_MAX_READY_POLLS, 0, NULL);
         } while (IS_EINTR(loop->num_ready_polls));
 #endif
 
@@ -368,7 +398,7 @@ void us_loop_run_bun_tick(struct us_loop_t *loop, const struct timespec* timeout
     loop->num_ready_polls = bun_epoll_pwait2(loop->fd, loop->ready_polls, LIBUS_MAX_READY_POLLS, timeout);
 #else
     do {
-        loop->num_ready_polls = kevent64(loop->fd, NULL, 0, loop->ready_polls, LIBUS_MAX_READY_POLLS,
+        loop->num_ready_polls = LIBUS_KEVENT_CALL(loop->fd, NULL, 0, loop->ready_polls, LIBUS_MAX_READY_POLLS,
             /* When we won't idle (pending wakeups or zero timeout), use KEVENT_FLAG_IMMEDIATE.
              * In XNU's kqueue_scan (bsd/kern/kern_event.c):
              *  - KEVENT_FLAG_IMMEDIATE: returns immediately after kqueue_process() (line 8031)
@@ -416,28 +446,28 @@ void us_internal_loop_update_pending_ready_polls(struct us_loop_t *loop, struct 
 #ifdef LIBUS_USE_KQUEUE
 /* Helper function for setting or updating EVFILT_READ and EVFILT_WRITE */
 int kqueue_change(int kqfd, int fd, int old_events, int new_events, void *user_data) {
-    struct kevent64_s change_list[2];
+    LIBUS_KEVENT change_list[2];
     int change_length = 0;
 
     /* Do they differ in readable? */
     int is_readable =  (new_events & LIBUS_SOCKET_READABLE);
     int is_writable =  (new_events & LIBUS_SOCKET_WRITABLE);
     if ((new_events & LIBUS_SOCKET_READABLE) != (old_events & LIBUS_SOCKET_READABLE)) {
-        EV_SET64(&change_list[change_length++], fd, EVFILT_READ, is_readable ? EV_ADD : EV_DELETE, 0, 0, (uint64_t)(void*)user_data, 0, 0);
+        LIBUS_EV_SET(&change_list[change_length++], fd, EVFILT_READ, is_readable ? EV_ADD : EV_DELETE, 0, 0, (void*)user_data);
     }
 
     if(!is_readable && !is_writable) {
         if(!(old_events & LIBUS_SOCKET_WRITABLE)) {
             // if we are not reading or writing, we need to add writable to receive FIN
-            EV_SET64(&change_list[change_length++], fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (uint64_t)(void*)user_data, 0, 0);
+            LIBUS_EV_SET(&change_list[change_length++], fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, (void*)user_data);
         }
     } else if ((new_events & LIBUS_SOCKET_WRITABLE) != (old_events & LIBUS_SOCKET_WRITABLE)) {
         /* Do they differ in writable? */
-        EV_SET64(&change_list[change_length++], fd, EVFILT_WRITE, (new_events & LIBUS_SOCKET_WRITABLE) ? EV_ADD | EV_ONESHOT : EV_DELETE, 0, 0, (uint64_t)(void*)user_data, 0, 0);
+        LIBUS_EV_SET(&change_list[change_length++], fd, EVFILT_WRITE, (new_events & LIBUS_SOCKET_WRITABLE) ? EV_ADD | EV_ONESHOT : EV_DELETE, 0, 0, (void*)user_data);
     }
     int ret;
     do {
-        ret = kevent64(kqfd, change_list, change_length, change_list, change_length, KEVENT_FLAG_ERROR_EVENTS, NULL);
+        ret = LIBUS_KEVENT_CALL(kqfd, change_list, change_length, change_list, change_length, KEVENT_FLAG_ERROR_EVENTS, NULL);
     } while (IS_EINTR(ret));
 
     // ret should be 0 in most cases (not guaranteed when removing async)
@@ -638,12 +668,21 @@ void us_timer_set(struct us_timer_t *t, void (*cb)(struct us_timer_t *t), int ms
 void us_timer_close(struct us_timer_t *timer, int fallthrough) {
     struct us_internal_callback_t *internal_cb = (struct us_internal_callback_t *) timer;
 
+#ifdef __APPLE__
     struct kevent64_s event;
-    EV_SET64(&event, (uint64_t) (void*) internal_cb, EVFILT_TIMER, EV_DELETE, 0, 0, (uint64_t)internal_cb, 0, 0);
+    LIBUS_EV_SET(&event, (uint64_t) (void*) internal_cb, EVFILT_TIMER, EV_DELETE, 0, 0, (uint64_t)internal_cb);
     int ret;
     do {
-        ret = kevent64(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
+        ret = LIBUS_KEVENT_CALL(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
     } while (IS_EINTR(ret));
+#else
+    struct kevent event;
+    EV_SET(&event, (uintptr_t)internal_cb, EVFILT_TIMER, EV_DELETE, 0, 0, (void *)internal_cb);
+    int ret;
+    do {
+        ret = kevent(internal_cb->loop->fd, &event, 1, &event, 1, NULL);
+    } while (IS_EINTR(ret));
+#endif
 
 
     /* (regular) sockets are the only polls which are not freed immediately */
@@ -660,14 +699,23 @@ void us_timer_set(struct us_timer_t *t, void (*cb)(struct us_timer_t *t), int ms
     internal_cb->cb = (void (*)(struct us_internal_callback_t *)) cb;
 
     /* Bug: repeat_ms must be the same as ms, or 0 */
+#ifdef __APPLE__
     struct kevent64_s event;
     uint64_t ptr = (uint64_t)(void*)internal_cb;
-    EV_SET64(&event, ptr, EVFILT_TIMER, EV_ADD | (repeat_ms ? 0 : EV_ONESHOT), 0, ms, (uint64_t)internal_cb, 0, 0);
+    LIBUS_EV_SET(&event, ptr, EVFILT_TIMER, EV_ADD | (repeat_ms ? 0 : EV_ONESHOT), 0, ms, (uint64_t)internal_cb);
 
     int ret;
     do {
-        ret = kevent64(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
+        ret = LIBUS_KEVENT_CALL(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
     } while (IS_EINTR(ret));
+#else
+    struct kevent event;
+    EV_SET(&event, (uintptr_t)internal_cb, EVFILT_TIMER, EV_ADD | (repeat_ms ? 0 : EV_ONESHOT), 0, ms, (void *)internal_cb);
+    int ret;
+    do {
+        ret = kevent(internal_cb->loop->fd, &event, 1, &event, 1, NULL);
+    } while (IS_EINTR(ret));
+#endif
 }
 #endif
 
@@ -745,6 +793,7 @@ struct us_internal_async *us_internal_create_async(struct us_loop_t *loop, int f
         loop->num_polls++;
     }
 
+#ifdef __APPLE__
     cb->machport_buf = us_malloc(MACHPORT_BUF_LEN);
     mach_port_t self = mach_task_self();
     kern_return_t kr = mach_port_allocate(self, MACH_PORT_RIGHT_RECEIVE, &cb->port);
@@ -767,6 +816,10 @@ struct us_internal_async *us_internal_create_async(struct us_loop_t *loop, int f
     if (UNLIKELY(kr != KERN_SUCCESS)) {
         return NULL;
     }
+#else
+    // FreeBSD: use EVFILT_USER or just a placeholder for now if not used
+    // Actually bun uses its own waker.
+#endif
 
     return (struct us_internal_async *) cb;
 }
@@ -775,17 +828,19 @@ struct us_internal_async *us_internal_create_async(struct us_loop_t *loop, int f
 void us_internal_async_close(struct us_internal_async *a) {
     struct us_internal_callback_t *internal_cb = (struct us_internal_callback_t *) a;
 
-    struct kevent64_s event;
+#ifdef __APPLE__
+    LIBUS_KEVENT event;
     uint64_t ptr = (uint64_t)(void*)internal_cb;
-    EV_SET64(&event, ptr, EVFILT_MACHPORT, EV_DELETE, 0, 0, (uint64_t)(void*)internal_cb, 0,0);
+    LIBUS_EV_SET(&event, ptr, EVFILT_MACHPORT, EV_DELETE, 0, 0, (uint64_t)(void*)internal_cb);
 
     int ret;
     do {
-        ret = kevent64(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
+        ret = LIBUS_KEVENT_CALL(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
     } while (IS_EINTR(ret));
 
     mach_port_deallocate(mach_task_self(), internal_cb->port);
     us_free(internal_cb->machport_buf);
+#endif
 
     /* (regular) sockets are the only polls which are not freed immediately */
     us_poll_free((struct us_poll_t *) a, internal_cb->loop);
@@ -796,12 +851,13 @@ void us_internal_async_set(struct us_internal_async *a, void (*cb)(struct us_int
 
     internal_cb->cb = (void (*)(struct us_internal_callback_t *)) cb;
 
+#ifdef __APPLE__
     // EVFILT_MACHPORT benchmarks faster than EVFILT_USER when using multiple threads
     // Very old versions of macOS required them to be portsets instead of ports
     // but that is no longer the case
     // There are not many examples on the internet of using machports this way
     // you can find one in Chromium's codebase.
-    struct kevent64_s event;
+    LIBUS_KEVENT event;
     event.ident = internal_cb->port;
     event.filter = EVFILT_MACHPORT;
     event.flags = EV_ADD | EV_ENABLE;
@@ -812,15 +868,17 @@ void us_internal_async_set(struct us_internal_async *a, void (*cb)(struct us_int
 
     int ret;
     do {
-        ret = kevent64(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
+        ret = LIBUS_KEVENT_CALL(internal_cb->loop->fd, &event, 1, &event, 1, KEVENT_FLAG_ERROR_EVENTS, NULL);
     } while (IS_EINTR(ret));
 
     if (UNLIKELY(ret == -1)) {
        abort();
     }
+#endif
 }
 
 void us_internal_async_wakeup(struct us_internal_async *a) {
+#ifdef __APPLE__
     struct us_internal_callback_t *internal_cb = (struct us_internal_callback_t *) a;
     mach_msg_header_t msg = {
         .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0),
@@ -861,6 +919,7 @@ void us_internal_async_wakeup(struct us_internal_async *a) {
             break;
         }
     }
+#endif
 }
 #endif
 

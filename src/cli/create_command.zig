@@ -2379,7 +2379,7 @@ const GitHandler = struct {
         //
         // ~/Build/throw
         // ❯ hyperfine "bun create react3 app --force --no-install" --prepare="rm -rf app"
-        // Benchmark #1: bun create react3 app --force --no-install
+        // Benchmark @"1": bun create react3 app --force --no-install
         //   Time (mean ± σ):     974.6 ms ±   6.8 ms    [User: 170.5 ms, System: 798.3 ms]
         //   Range (min … max):   960.8 ms … 984.6 ms    10 runs
         //
@@ -2387,7 +2387,7 @@ const GitHandler = struct {
         //
         // ~/Build/throw
         // ❯ hyperfine "bun create react3 app --force --no-install" --prepare="rm -rf app"
-        // Benchmark #1: bun create react3 app --force --no-install
+        // Benchmark @"1": bun create react3 app --force --no-install
         //   Time (mean ± σ):     306.7 ms ±   6.1 ms    [User: 31.7 ms, System: 269.8 ms]
         //   Range (min … max):   299.5 ms … 318.8 ms    10 runs
 

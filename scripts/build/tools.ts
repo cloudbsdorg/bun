@@ -119,6 +119,7 @@ interface Rejection {
  * first.
  */
 export function findBun(os: OS): string {
+  if (os === "freebsd") return "/tmp/bun-node-wrapper";
   const exe = os === "windows" ? "bun.exe" : "bun";
   const userBun = join(homedir(), ".bun", "bin", exe);
   if (isExecutable(userBun)) return userBun;

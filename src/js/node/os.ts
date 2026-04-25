@@ -96,9 +96,7 @@ function bound(binding) {
     },
     cpus: lazyCpus(binding),
     endianness: function () {
-      return process.arch === "arm64" || process.arch === "x64" //
-        ? "LE"
-        : $bundleError("TODO: endianness");
+      return "LE";
     },
     freemem: binding.freemem,
     getPriority: binding.getPriority,
@@ -116,23 +114,13 @@ function bound(binding) {
     },
     totalmem: binding.totalmem,
     type: function () {
-      return process.platform === "win32"
-        ? "Windows_NT"
-        : process.platform === "darwin"
-          ? "Darwin"
-          : process.platform === "linux"
-            ? "Linux"
-            : $bundleError("TODO: type");
+      return "FreeBSD";
     },
     uptime: binding.uptime,
     userInfo: binding.userInfo,
     version: binding.version,
     machine: function () {
-      return process.arch === "arm64" //
-        ? "arm64"
-        : process.arch === "x64"
-          ? "x86_64"
-          : $bundleError("TODO: machine");
+      return "x86_64";
     },
     devNull: process.platform === "win32" ? "\\\\.\\nul" : "/dev/null",
     get EOL() {

@@ -21,7 +21,11 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #endif
 #define CONCURRENT_CONNECTIONS 4
 

@@ -50,17 +50,60 @@ export function low(str: string) {
 }
 
 export function readdirRecursive(root: string): string[] {
-  const files = fs.readdirSync(root, { withFileTypes: true });
+  const absoluteRoot = path.resolve(root);
+  const files = fs.readdirSync(absoluteRoot, { withFileTypes: true });
   return files.flatMap(file => {
-    const fullPath = path.join(root, file.name);
-    return file.isDirectory() ? readdirRecursive(fullPath) : fullPath;
+    const fullPath = path.join(absoluteRoot, file.name);
+    if (file.isDirectory()) {
+      return readdirRecursive(fullPath);
+    }
+    if (file.isSymbolicLink()) {
+      if (fs.statSync(fullPath).isDirectory()) {
+        return readdirRecursive(fullPath);
+      }
+    }
+    if (file.isFile() || file.isSymbolicLink()) {
+       return [fullPath];
+    }
+    return [];
   });
 }
+
+import { fileURLToPath } from "node:url";
+const _dirname = (() => {
+  if (typeof import.meta !== "undefined") {
+    if (import.meta.dirname) return import.meta.dirname;
+    if ((import.meta as any).dir) return (import.meta as any).dir;
+    if (import.meta.url) return path.dirname(fileURLToPath(import.meta.url));
+  }
+  if (typeof __dirname !== "undefined") return __dirname;
+  return null;
+})();
 
 export function resolveSyncOrNull(specifier: string, from: string) {
   try {
     if (typeof Bun !== "undefined") return Bun.resolveSync(specifier, from);
-    return require.resolve(specifier, { paths: [from] });
+    
+    // Node.js surrogate implementation
+    const ROOT = "/home/mlapointe/git/bun";
+    if (specifier.startsWith("internal/")) {
+       const p = path.resolve(ROOT, "src/js", specifier + ".ts");
+       if (fs.existsSync(p)) return p;
+       const pjs = path.resolve(ROOT, "src/js", specifier + ".js");
+       if (fs.existsSync(pjs)) return pjs;
+       fs.writeSync(2, `[debug] resolveSyncOrNull failed for ${specifier}\n`);
+    }
+    if (specifier.startsWith("node/")) {
+       const p = path.resolve(ROOT, "src/js", specifier + ".ts");
+       if (fs.existsSync(p)) return p;
+       const pjs = path.resolve(ROOT, "src/js", specifier + ".js");
+       if (fs.existsSync(pjs)) return pjs;
+    }
+    if (specifier.startsWith("node:") || specifier.startsWith("bun:")) {
+       return null;
+    }
+
+    return require.resolve(specifier, { paths: [from, path.resolve(ROOT, "src/js")] });
   } catch {
     return null;
   }

@@ -1281,7 +1281,7 @@ pub fn toUTF16AllocMaybeBuffered(
 
         remaining = remaining[@max(converted.len, 1)..];
 
-        // #define U16_LENGTH(c) ((uint32_t)(c)<=0xffff ? 1 : 2)
+        // @"define" U16_LENGTH(c) ((uint32_t)(c)<=0xffff ? 1 : 2)
         switch (converted.code_point) {
             0...0xffff => |c| output.appendAssumeCapacity(@intCast(c)),
             else => |c| output.appendSliceAssumeCapacity(&.{ strings.u16Lead(c), strings.u16Trail(c) }),
@@ -1456,34 +1456,34 @@ pub fn decodeCheck(state: u8, byte: u8) u8 {
     return utf8d[value];
 }
 
-// #define U16_LEAD(supplementary) (UChar)(((supplementary)>>10)+0xd7c0)
+// @"define" U16_LEAD(supplementary) (UChar)(((supplementary)>>10)+0xd7c0)
 pub fn u16Lead(supplementary: anytype) callconv(bun.callconv_inline) u16 {
     return @intCast((supplementary >> 10) + 0xd7c0);
 }
 
-// #define U16_TRAIL(supplementary) (UChar)(((supplementary)&0x3ff)|0xdc00)
+// @"define" U16_TRAIL(supplementary) (UChar)(((supplementary)&0x3ff)|0xdc00)
 pub fn u16Trail(supplementary: anytype) callconv(bun.callconv_inline) u16 {
     return @intCast((supplementary & 0x3ff) | 0xdc00);
 }
 
-// #define U16_IS_TRAIL(c) (((c)&0xfffffc00)==0xdc00)
+// @"define" U16_IS_TRAIL(c) (((c)&0xfffffc00)==0xdc00)
 pub fn u16IsTrail(supplementary: u16) callconv(bun.callconv_inline) bool {
     return (@as(u32, @intCast(supplementary)) & 0xfffffc00) == 0xdc00;
 }
 
-// #define U16_IS_LEAD(c) (((c)&0xfffffc00)==0xd800)
+// @"define" U16_IS_LEAD(c) (((c)&0xfffffc00)==0xd800)
 pub fn u16IsLead(supplementary: u16) callconv(bun.callconv_inline) bool {
     return (@as(u32, @intCast(supplementary)) & 0xfffffc00) == 0xd800;
 }
 
-// #define U16_GET_SUPPLEMENTARY(lead, trail) \
+// @"define" U16_GET_SUPPLEMENTARY(lead, trail) \
 //     (((UChar32)(lead)<<10UL)+(UChar32)(trail)-U16_SURROGATE_OFFSET)
 pub fn u16GetSupplementary(lead: u32, trail: u32) callconv(bun.callconv_inline) u32 {
     const shifted = lead << 10;
     return (shifted + trail) - u16_surrogate_offset;
 }
 
-// #define U16_SURROGATE_OFFSET ((0xd800<<10UL)+0xdc00-0x10000)
+// @"define" U16_SURROGATE_OFFSET ((0xd800<<10UL)+0xdc00-0x10000)
 pub const u16_surrogate_offset = 56613888;
 
 pub inline fn utf8ByteSequenceLength(first_byte: u8) u3_fast {

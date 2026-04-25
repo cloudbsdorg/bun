@@ -1,22 +1,22 @@
-// #define Z_BINARY   0
-// #define Z_TEXT     1
-// #define Z_ASCII    Z_TEXT   /* for compatibility with 1.2.2 and earlier */
-// #define Z_UNKNOWN  2
+// @"define" Z_BINARY   0
+// @"define" Z_TEXT     1
+// @"define" Z_ASCII    Z_TEXT   /* for compatibility with 1.2.2 and earlier */
+// @"define" Z_UNKNOWN  2
 pub const DataType = enum(c_int) {
     Binary = 0,
     Text = 1,
     Unknown = 2,
 };
 
-// #define Z_OK            0
-// #define Z_STREAM_END    1
-// #define Z_NEED_DICT     2
-// #define Z_ERRNO        (-1)
-// #define Z_STREAM_ERROR (-2)
-// #define Z_DATA_ERROR   (-3)
-// #define Z_MEM_ERROR    (-4)
-// #define Z_BUF_ERROR    (-5)
-// #define Z_VERSION_ERROR (-6)
+// @"define" Z_OK            0
+// @"define" Z_STREAM_END    1
+// @"define" Z_NEED_DICT     2
+// @"define" Z_ERRNO        (-1)
+// @"define" Z_STREAM_ERROR (-2)
+// @"define" Z_DATA_ERROR   (-3)
+// @"define" Z_MEM_ERROR    (-4)
+// @"define" Z_BUF_ERROR    (-5)
+// @"define" Z_VERSION_ERROR (-6)
 pub const ReturnCode = enum(c_int) {
     Ok = 0,
     StreamEnd = 1,
@@ -29,13 +29,13 @@ pub const ReturnCode = enum(c_int) {
     VersionError = -6,
 };
 
-// #define Z_NO_FLUSH      0
-// #define Z_PARTIAL_FLUSH 1
-// #define Z_SYNC_FLUSH    2
-// #define Z_FULL_FLUSH    3
-// #define Z_FINISH        4
-// #define Z_BLOCK         5
-// #define Z_TREES         6
+// @"define" Z_NO_FLUSH      0
+// @"define" Z_PARTIAL_FLUSH 1
+// @"define" Z_SYNC_FLUSH    2
+// @"define" Z_FULL_FLUSH    3
+// @"define" Z_FINISH        4
+// @"define" Z_BLOCK         5
+// @"define" Z_TREES         6
 pub const FlushValue = enum(c_int) {
     NoFlush = 0,
     PartialFlush = 1,

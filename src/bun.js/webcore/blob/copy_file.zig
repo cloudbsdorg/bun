@@ -1024,7 +1024,7 @@ pub const CopyFileWindows = struct {
 
         if (rc.errno()) |errno| {
             this.throw(.{
-                // #6336
+                // @"6336"
                 .errno = if (errno == @intFromEnum(bun.sys.SystemErrno.EPERM))
                     @as(c_int, @intCast(@intFromEnum(bun.sys.SystemErrno.ENOENT)))
                 else
@@ -1065,7 +1065,7 @@ pub const CopyFileWindows = struct {
                 return;
             } else {
                 var err = bun.sys.Error.fromCode(
-                    // #6336
+                    // @"6336"
                     if (errno == .PERM) .NOENT else errno,
 
                     .copyfile,

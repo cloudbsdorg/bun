@@ -39,6 +39,37 @@ import { getProfile } from "./build/profiles.ts";
 import { STREAM_FD } from "./build/stream.ts";
 import { interactive, nameColor, status } from "./build/tty.ts";
 
+const USAGE = `\
+Usage: bun scripts/build.ts [options] [exec-args...]
+
+Options:
+  --profile=<name>        Build profile (default: debug)
+                          Profiles: debug, debug-local, debug-no-asan,
+                                    release, release-local, release-asan,
+                                    release-assertions, ci-*
+  --<field>=<value>       Override a config field. Boolean fields take
+                          on/off/true/false/yes/no/1/0.
+                          Fields: asan, lto, assertions, logs, baseline,
+                                  canary, valgrind, webkit (prebuilt|local),
+                                  buildDir, mode (full|cpp-only|link-only)
+  --target=<name>         Build a specific ninja target (repeatable)
+  --configure-only        Emit build.ninja, don't run it
+  -j<N>, -v, -k<N>        Passed through to ninja
+  --help                  Show this help
+
+Any bare positional and everything after is passed to the built binary:
+  bun scripts/build.ts test foo.test.ts   → builds, then runs
+                                            ./build/debug/bun-debug test foo.test.ts
+
+Examples:
+  bun scripts/build.ts --profile=debug
+  bun scripts/build.ts --profile=release --lto=off
+  bun scripts/build.ts test foo.test.ts
+  bun scripts/build.ts --profile=debug-local run script.ts
+  bun scripts/build.ts --target=bun-zig
+  bun scripts/build.ts --configure-only
+`;
+
 // ───────────────────────────────────────────────────────────────────────────
 // Main
 // ───────────────────────────────────────────────────────────────────────────
@@ -418,33 +449,3 @@ function parseBool(v: string): boolean {
   throw new BuildError(`Invalid boolean value: ${v}`, { hint: "Use on/off, true/false, yes/no, or 1/0" });
 }
 
-const USAGE = `\
-Usage: bun scripts/build.ts [options] [exec-args...]
-
-Options:
-  --profile=<name>        Build profile (default: debug)
-                          Profiles: debug, debug-local, debug-no-asan,
-                                    release, release-local, release-asan,
-                                    release-assertions, ci-*
-  --<field>=<value>       Override a config field. Boolean fields take
-                          on/off/true/false/yes/no/1/0.
-                          Fields: asan, lto, assertions, logs, baseline,
-                                  canary, valgrind, webkit (prebuilt|local),
-                                  buildDir, mode (full|cpp-only|link-only)
-  --target=<name>         Build a specific ninja target (repeatable)
-  --configure-only        Emit build.ninja, don't run it
-  -j<N>, -v, -k<N>        Passed through to ninja
-  --help                  Show this help
-
-Any bare positional and everything after is passed to the built binary:
-  bun scripts/build.ts test foo.test.ts   → builds, then runs
-                                            ./build/debug/bun-debug test foo.test.ts
-
-Examples:
-  bun scripts/build.ts --profile=debug
-  bun scripts/build.ts --profile=release --lto=off
-  bun scripts/build.ts test foo.test.ts
-  bun scripts/build.ts --profile=debug-local run script.ts
-  bun scripts/build.ts --target=bun-zig
-  bun scripts/build.ts --configure-only
-`;

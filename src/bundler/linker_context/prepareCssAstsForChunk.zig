@@ -169,7 +169,7 @@ fn prepareCssAstsForChunkImpl(c: *LinkerContext, chunk: *Chunk, allocator: std.m
                         // drop rules. Instead we either reslice the copied
                         // header (fast path) or build a fresh rules list.
                         //
-                        // Regression: #28914
+                        // Regression: @"28914"
                         const original_rules = ast.rules.v.items;
                         var layer_count: usize = 0;
                         var prefix_end: usize = original_rules.len;

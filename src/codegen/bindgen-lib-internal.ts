@@ -2,12 +2,26 @@
 // and checking on input data. The goal is to allow people not aware of
 // various footguns in JavaScript, C++, and the bindings generator to
 // always produce correct code, or bail with an error.
-import { expect } from "bun:test";
+// import { expect } from "bun:test";
+const expect = (v: any) => ({
+  toEndWith: (s: string) => {
+    if (typeof v === "string" && v.endsWith(s)) return;
+    throw new Error(`Expected ${v} to end with ${s}`);
+  },
+  toBe: (s: any) => {
+    if (v === s) return;
+    throw new Error(`Expected ${v} to be ${s}`);
+  }
+});
+
 import assert from "node:assert";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { FuncOptions, t } from "./bindgen-lib";
 
-export const src = path.join(import.meta.dirname, "../");
+const dirname = (typeof import.meta !== "undefined" && (import.meta.dirname || (import.meta as any).dir)) || (typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url)));
+if (!dirname) throw new Error("Could not determine directory name");
+export const src = path.join(dirname, "../");
 
 export type TypeKind = keyof typeof t;
 
@@ -878,7 +892,7 @@ function snapshotCallerLocation(): string {
   const lines = stack.split("\n");
   let i = 1;
   for (; i < lines.length; i++) {
-    if (!lines[i].includes(import.meta.dir)) {
+    if (lines[i].includes(".bind.ts")) {
       return lines[i];
     }
   }
